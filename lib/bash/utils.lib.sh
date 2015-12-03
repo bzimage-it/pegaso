@@ -6,6 +6,9 @@
 
 PERL_BIN=/usr/bin/perl
 
+
+PEGASO_EXIT_CODE_ON_ASSERT=1
+
 # =========================================================================
 #                               GENERAL PURPOSE FUNCTIONS
 # =========================================================================
@@ -23,7 +26,7 @@ function eval_var_idx () {
 # $1 : assertion expression to be tested via 'test -z'
 # $2 : error message
 function pegaso_assert_def () {
-    test -z "$1" && echo "$2" 1>&2 && exit 1
+    test -z "$1" && echo "$2" 1>&2 && exit ${PEGASO_EXIT_CODE_ON_ASSERT}
 }
 
 # test an assertion, if failed write $2 on stderr and exit(1)
@@ -31,7 +34,7 @@ function pegaso_assert_def () {
 # $2 : error message
 function pegaso_assert () {
     test $1 
-    test $? != 0 && echo "$2" 1>&2 && exit 1
+    test $? != 0 && echo "$2" 1>&2 && exit ${PEGASO_EXIT_CODE_ON_ASSERT}
 }
 
 # test two expr $1,$2 to be equal, if failed write $3 on stderr and exit(1)
@@ -40,7 +43,7 @@ function pegaso_assert () {
 # $2 : error message
 function pegaso_assert_eq () {
     test "$1" == "$2"
-    test $? != 0 && echo "$3" 1>&2 && exit 1
+    test $? != 0 && echo "$3" 1>&2 && exit ${PEGASO_EXIT_CODE_ON_ASSERT}
 }
 
 

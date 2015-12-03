@@ -35,7 +35,7 @@ cat <<EOF > $t
    pegaso_assert "aa == ab" "abort $ID"
    exit 0
 EOF
-myexec $t 1 $ID 
+myexec $t ${PEGASO_EXIT_CODE_ON_ASSERT} $ID 
 
 ID=ABRA2
 cat <<EOF > $t 
@@ -75,7 +75,7 @@ cat <<EOF > $t
    pegaso_assert_eq 1 2 "abort $ID - 1"
    exit 0
 EOF
-myexec $t 1 $ID
+myexec $t ${PEGASO_EXIT_CODE_ON_ASSERT} $ID
 
 
 ID=DEF1
