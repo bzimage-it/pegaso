@@ -1,0 +1,28 @@
+#!/bin/bash
+
+F=~/.ssh/known_hosts
+re='^[0-9]+$'
+
+usage() {
+    cat <<EOF
+usage:
+
+  $0 <line-number>
+     remove a line into the file $F
+EOF
+}
+
+if [ -f $F ]; then
+    line="$1"
+    if ! [[ $line =~ $re ]] ; then
+	echo "error: Not a number '$line'" >&2;
+	usage
+	exit 1
+    fi
+    sed -i '${line}d' $F
+    exit $?
+else
+    echo "error: not found $F" >&2;
+    exit 2
+fi
+
