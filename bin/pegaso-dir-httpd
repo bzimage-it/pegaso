@@ -1,0 +1,38 @@
+#!/bin/bash
+
+port=8000
+
+zenity_opt="--title='Mostra Directory su Cellulare'"
+
+t=$(tempfile)
+
+IP=$(ifconfig  | grep 'inet addr:'| grep -v '127.0.0.1' | cut -d: -f2 | awk '{ print $1}')
+pid=
+
+function mykill () {
+	kill $pid
+	sleep 1
+	kill -9 $pid	
+}
+
+trap mykill TERM KILL
+
+zenity --file-selection --directory --title='Mostra Directory su Cellulare' > $t
+ret=$?
+
+echo IP=$IP ret=$ret
+cat $t
+
+if [ $ret == 0 ]; then
+	cd $(cat $t)
+	dir="$(pwd)"
+	python -m SimpleHTTPServer $port &
+	pid=$!
+	zenity --info --text "OK, you can now access to selected directory:\n\n${dir}\n\nat local address:\n\nhttp://$IP:$port \n\n when you finished, click OK to disable" --title='Mostra Directory su Cellulare'
+	mykill
+fi
+
+rm -f $t 
+
+
+
