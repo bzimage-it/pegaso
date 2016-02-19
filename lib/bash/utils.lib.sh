@@ -39,15 +39,35 @@ function pegaso_assert () {
 
 # test two expr $1,$2 to be equal, if failed write $3 on stderr and exit(1)
 # this a low level funtion
-# $1 : assertion expression to be tested via 'test'
-# $2 : error message
+#
+# params:
+# $1 : expr 1 
+# $2 : expr 2
+# $3 : string on error
+#
+# output:
+#   $3 if test failed (stderr)
+#
+# exit() code:
+#   ${PEGASO_EXIT_CODE_ON_ASSERT}  if test failed
+# 
+# examples:
+#   pegaso_assert_eq xyz xyz "this is not showed"
+#   pegaso_assert_eq xxx yyyyy "this is showed on stderr and exit"
+#
 function pegaso_assert_eq () {
     test "$1" == "$2"
     test $? != 0 && echo "$3" 1>&2 && exit ${PEGASO_EXIT_CODE_ON_ASSERT}
 }
 
-
-function ask_confirmation_yes () {
+# ask user to type exactly "yes" as a confirmation 
+#
+# $* : message to write
+#
+# return:
+#    0 -true- if answer is "yes"
+#    1 -false- on any other answer
+function pegaso_ask_yes () {
     local RISP=
     read  -p "$* [yes/no]" RISP
     if [ "$RISP" = "yes" ]; then
@@ -57,10 +77,10 @@ function ask_confirmation_yes () {
     fi
 }
 
-function ask_choose_enum () {
-    # write to std error a list op possibile options in <opt>
-    # until user choose one
-    # each param is in the form <opt>[:<description>]
+# write to std error a list op possibile options in <opt>
+# until user choose one
+# each param is in the form <opt>[:<description>]
+function pegaso_ask_choose_enum () {
     local ok=n
     local n=0
     local O=
@@ -86,7 +106,7 @@ function ask_choose_enum () {
 }
 
 
-function safe_rm_rf_dir () {
+function pegaso_safe_rm_rf_dir () {
     local dir="$1"
     local base=
     local dirname=
@@ -108,7 +128,7 @@ function safe_rm_rf_dir () {
 }
 
 
-function safe_rm_rf_dir_progress () {
+function pegaso_safe_rm_rf_dir_progress () {
     local PROGRESS_CHARS="$1"
     local DIR="$2"
     shift
