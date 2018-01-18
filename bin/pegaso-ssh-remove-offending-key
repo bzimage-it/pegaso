@@ -19,7 +19,7 @@ if [ -f $F ]; then
 	usage
 	exit 1
     fi
-    sed -i '${line}d' $F
+    sed -i "${line}d" $F
     exit $?
 else
     echo "error: not found $F" >&2;
