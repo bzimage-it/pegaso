@@ -43,6 +43,10 @@ fi
 
 case "$cmd" in
    "recursive")
+   	if [ "$dir" == "$HOME" ]; then
+   		echo "preventing recursive mode on $HOME"
+   		exit 1
+   	fi
 	find "$dir" -type f -mtime +"$days" -printf "%p %A+ %T+\n" -exec rm {} \;
 	find "$dir" -mindepth 1 -type d -empty -delete
 	echo DONE recursive: $dir
