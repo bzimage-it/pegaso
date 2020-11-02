@@ -8,6 +8,7 @@ Different languages like bash, perl, etc... for doing all day work.
 get pegaso into your favourite dir, e.g. $HOME/opt:
 
 `cd && mkdir opt && cd opt`
+
 `git clone https://github.com/bzimage-it/pegaso.git`
 
 then execute, one time only:
