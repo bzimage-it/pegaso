@@ -32,7 +32,7 @@ cmd="$1"
 dir="$2"
 days="$3"
 
-if [ -z "$dir" -a ! -d "$tmp" ]; then
+if [ -n "$dir" -a ! -d "$dir" ]; then
 	echo not exists dir :$tmp
 	exit 1
 fi
