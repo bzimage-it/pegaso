@@ -140,12 +140,29 @@ find $(cat $dirlist) -iname "*$PATTERN*" -printf "%p\n" > $filelist
 echo === FILELIST: ===
 cat $filelist | perl -ne 'BEGIN{$n=1;} print "$n $_";$n++'
 declare -a RISP
-IFS=' ' read -p "create LINKS here? [(A)ll/(N)o/n1 n2...] " -ra RISP
+IFS=' ' read -p "What to process? (+=enable -=disable links) [(A)ll/(N)o/[-|+]n1 n2...] " -ra RISP
+first="${RISP:0:1}"
+
+if [ "$first" = '+' -o "$first" = '-' ]; then
+	RISP="${RISP:1}"
+else
+	# default
+	first="-"
+fi
+
+echo LINK MODE IS: $first
 
 if [ "${RISP[0]^^}" != N ]; then
     echo "choosed: ${RISP[@]}"
     export RR="${RISP[@]}"
-    xargs_cmd="xargs -n1 ln -s"
+    case "$first" in
+    	'+')
+	    xargs_cmd="xargs -n1 ln -s"
+	    ;;
+	'-')
+	    xargs_cmd="echo"
+	    ;;
+    esac
     if [ "${RISP[0]^^}" == "A" ]; then
 	cat $filelist | $xargs_cmd 
     else
@@ -170,6 +187,8 @@ if [ "${RISP[0]^^}" != N ]; then
     # find "$FULL" -iname "*$PATTERN*" -exec ln -s {} . \;
 fi
 
-echo " ======= LOCAL LINKS on '$PATTERN' ============== "
-ls *$PATTERN*
+if [ "$first" = '+' ]; then
+	echo " ======= LOCAL LINKS on '$PATTERN' ============== "
+	ls *$PATTERN*
+fi
 
