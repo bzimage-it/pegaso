@@ -26,12 +26,13 @@ PEGASO_PARENT_ROOT="$(dirname "$PEGASO_ROOT")"
 # echo "$PEGASO_PARENT_ROOT"
 
 
-RMFILE=removed-files.list
+RMFILE=.removed-files.list
 
-dir="$1"
-days="$2"
+cmd="$1"
+dir="$2"
+days="$3"
 
-if [ -n "$dir" -a ! -d "$tmp" ]; then
+if [ -z "$dir" -a ! -d "$tmp" ]; then
 	echo not exists dir :$tmp
 	exit 1
 fi
@@ -40,7 +41,7 @@ if [ -z "$days" ]; then
 	days=90
 fi
 
-case "$command" in
+case "$cmd" in
    "recursive")
 	find "$dir" -type f -mtime +"$days" -printf "%p %A+ %T+\n" -exec rm {} \;
 	find "$dir" -mindepth 1 -type d -empty -delete
@@ -50,15 +51,18 @@ case "$command" in
 	find "$tmp" -maxdepth 1 -type f  -mtime +"${days}" ! -name ".*" -printf "%T+ %A+ %p+\n" -exec rm -f {} \;
 	echo DONE no recursive: $tmp
 	;;
-   "hold-n-most-recent-used")
-	N="$days"
-	export NFILES="$2"
-	rm $RMFILE
+   "hold-n-most-recent-used")   	
+	export NFILES="$days"
+	cd "$dir" || exit 2
+	rm -f $RMFILE
 	t=$(mktemp)
-	echo "processing as temp dir: $dir ..."  
-	find -maxdepth 1 -mindepth 1 -type f -not -name '\.*' -printf "%A+|%p\n" | sort -r | perl -ne '$n++; s/^[^\|]*\|//o; print if ($n>$ENV{NFILES});' | tee $t | xargs rm -f 
+	echo "processing as temp dir: $dir n=$NFILES..."  
+	find -maxdepth 1 -mindepth 1 -type f -not -name '\.*' -printf "%A+|%p\n" | sort -r | perl -ne 'BEGIN { $n=0; } $n++; s/^[^\|]*\|//o; print if ($n>$ENV{NFILES});' | tee $RMFILE | xargs -d '\n' rm -f 
+	echo "removed files:"
+	cat $RMFILE
 	echo "====================| $DD |======== " >> $RMFILE
-	date >> $RMFILE   	
+	date >> $RMFILE
+	# cat $RMFILE	
    	;;
    *)
    	echo "sintax:"
