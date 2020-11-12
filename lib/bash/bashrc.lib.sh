@@ -6,6 +6,39 @@
 alias s='history -s '
 
 # a cool "cd" version that works also for files (go to file's dir)
-cd(){ local d="$@" ; test -z "$d" && d="$HOME"; if [ -f "$d" ]; then d=$(dirname "$d"); fi; builtin cd "$d"; }
+# and also accept -n option to go back of n steo '..', 
+#
+# examples:
+# $ cd
+# $ mkdir tmp
+# $ touch tmp/example.txt
+# $ cd tmp/example.txt
+# ~/tmp$ mkdir -p level2/level3
+# ~/tmp$ cd level2/level3
+# ~/tmp/level2/level3$ cd -3
+# go back step 3: ../../../
+# $
+#
+#
+cd() { 
+   local d="$@" ; 
+   local n=
+   local i=
+   local str=
+   if [[ "$d" =~  ^-([0-9]+) ]]; then
+   	n="${d:1}"
+	for i in $(seq 1 "$n"); do
+   			str+="../"
+   	done
+	echo go back step $n: $str
+   	builtin cd "$str"
+   else
+	test -z "$d" && d="$HOME"; 
+	if [ -f "$d" ]; then 
+	      d=$(dirname "$d"); 
+	fi; 
+	builtin cd "$d"
+   fi 
+}
 
 
