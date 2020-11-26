@@ -23,6 +23,11 @@ if [[ -z $FILE ]]; then
     exit 1
 fi
 
+which qpdf > /dev/null
+if [[ $? != 0 ]]; then
+    echo "no 'qpdf' command found, install it first"
+    exit 2
+fi
 
 
 expected_type="application/pdf"
@@ -48,6 +53,7 @@ read -p "INSERT PASSWORD > "  -s PWD
 echo
 
 ofile="${filename}_no_pwd.$extension"
+
 
 qpdf --password="$PWD" --decrypt "$FILE" "$ofile"
 

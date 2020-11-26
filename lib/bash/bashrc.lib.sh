@@ -21,7 +21,7 @@ alias s='history -s '
 #
 #
 cd() { 
-   local d="$@" ; 
+   local d="$1" ; 
    local n=
    local i=
    local str=
@@ -35,9 +35,12 @@ cd() {
    else
 	test -z "$d" && d="$HOME"; 
 	if [ -f "$d" ]; then 
-	      d=$(dirname "$d"); 
-	fi; 
-	builtin cd "$d"
+	      d="$(dirname "$d")";
+	      builtin cd "$d"
+	else
+	      builtin cd "$@"
+	fi
+	
    fi 
 }
 
