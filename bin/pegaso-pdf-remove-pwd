@@ -1,0 +1,67 @@
+#!/bin/bash
+
+PEGASO_START_SCRIPT_PWD=$(pwd)
+
+# this is a code snipped:
+# from http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in
+# to understand what directory it's stored in bash script itself
+
+PEGASO_SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$PEGASO_SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+  PEGASO_DIR="$( cd -P "$( dirname "$PEGASO_SOURCE" )" && pwd )"
+  PEGASO_SOURCE="$(readlink "$PEGASO_SOURCE")"
+  [[ $PEGASO_SOURCE != /* ]] && PEGASO_SOURCE="$PEGASO_DIR/$PEGASO_SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+done
+PEGASO_SCRIPT_DIR="$( cd -P "$( dirname "$PEGASO_SOURCE" )" && pwd )"
+PEGASO_SCRIPT_FILE=$(basename "$PEGASO_SOURCE")
+# end of snipped
+
+FILE="$1"
+
+if [[ -z $FILE ]]; then
+    echo "sintax: ${PEGASO_SCRIPT_FILE} <filename>"
+    exit 1
+fi
+
+
+
+expected_type="application/pdf"
+type="$(file -b --mime-type 2020_OTTOBRE_SEBASTIANI_FABRIZIO_ARAKNE.pdf)"
+
+if [[ $type !=  $expected_type ]]; then
+    echo "warning: file seems not to be mime-type $expected_type , but $type"
+fi
+
+dirname="$(dirname "$FILE")"
+filename="$(basename -- "$FILE")"
+extension="${filename##*.}"
+filename="${filename%.*}"
+
+echo
+echo "path: $FILE"
+echo "dir : $dirname"
+echo "name: $filename"
+echo "ext.: $extension"
+echo
+
+read -p "INSERT PASSWORD > "  -s PWD
+echo
+
+ofile="${filename}_no_pwd.$extension"
+
+qpdf --password="$PWD" --decrypt "$FILE" "$ofile"
+
+if [[ $? != 0 ]]; then
+    echo "some error occurred"
+fi
+
+if [[ -f $ofile ]]; then
+    echo "output file: $ofile"
+    which evince > /dev/null
+    if [[ $? == 0 ]]; then
+	evince $ofile
+    fi
+fi
+
+
+
