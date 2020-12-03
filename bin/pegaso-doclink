@@ -9,8 +9,9 @@
 # 1. 2020-05-20: first relase
 # 2. 2020-06-08: added [<COPY-DIR>] option
 # 3. 2020-10-07: better comments and help with examples. Code review.
+# 4. 2020-12-03: EXTRANAME param for better copied file (new template)
 
-version=3
+version=4
 
 PEGASO_START_SCRIPT_PWD="$(pwd)"
 
@@ -43,7 +44,7 @@ function abort () {
 
     sintax: $CMD <FILE-PATH>
                  directly link the file locally, no questions.
-            $CMD { <DIR>|<DIR-PATTERN> } <PATTERN> [<COPY-DIR>]
+            $CMD { <DIR>|<DIR-PATTERN> } <PATTERN> [<COPY-DIR>] [EXTRANAME]
                  if first param is a dir look in it, otherwice look in all
                  directories mathing \$SVN_ROOT/<DIR-PATTERN>*
                  if <COPY-DIR> is also given, copy the file to
@@ -99,6 +100,7 @@ cd "$PEGASO_START_SCRIPT_PWD" || abort "cannot change dir: $PEGASO_START_SCRIPT_
 DIR="$1"
 PATTERN="$2"
 COPYDIR="$3"
+EXTRANAME="$4"
 if [ -f "$DIR" -a -z "$PATTERN" ] ; then
 	# if is a file and no PATTERN, link this with no question:
 	ln -sfv "$DIR" .
@@ -169,16 +171,19 @@ if [ "${RISP[0]^^}" != N ]; then
 	cat $filelist | perl -ne 'BEGIN{ foreach (split(/ /,$ENV{"RR"})) { $h{$_} = 1 } } $i++; print "$_" if($h{$i});' > $choosedfile
 	cat $choosedfile | $xargs_cmd
 	if [ -n "$COPYDIR" ]; then
-	    echo "=== SVN SCAN: === "
+	    echo "=== SVN COPY: === "
 	    cat $choosedfile | while read FF; do
 		dirname="$(dirname "$FF")"
 		filename_base="$(basename -- "$FF")"
 		extension="${filename_base##*.}"
 		filename="${filename_base%.*}"
 		svnver=$(svnversion -c "$FF")
-		echo "$filename_base [svn:$svnver]"
-		echo cp \"$FF\" \"$COPYDIR/$filename-r$svnver.$extension\" >> $cpfile
-		echo echo \"copied $filename-r$svnver.$extension\" >> $cpfile
+		svnrepo=$(svn info | egrep -e '^Repository Root: '  | perl -ne 'm/([^\/]+)$/o && print "$1";')
+		echo "$filename_base [svn:$svnrepo:r$svnver]"
+		target="$filename-${EXTRANAME}-$svnrepo-r${svnver}.$extension"
+		echo cp \"$FF\" \"${COPYDIR}/$target\" >> $cpfile
+		echo echo \"$target\" >> $cpfile
+		# cat $cpfile
 	    done
 	    bash $cpfile
 	fi
