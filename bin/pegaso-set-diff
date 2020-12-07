@@ -21,8 +21,9 @@ if(@ARGV == 0) {
            $name myfile1 myfile2 
         avoid spaces at end of lines:
            $name myfile1 myfile2 's/\s+\$//o;'
-        ignore all spaces:
-           $name myfile1 myfile2 's/\s+//og;'
+        ignore all spaces and print special % at end of each print:
+           $name myfile1 myfile2 's/\s+//og;' %
+
 EOF
     exit(1);
 }
@@ -54,24 +55,22 @@ sub read_file () {
 
 my $allkeys = {};
 
-foreach my $k (%{$content[0]}) {
+foreach my $k (keys(%{$content[0]})) {
     $allkeys->{$k} = $content[0]->{$k};
 }
-foreach my $k (%{$content[1]}) {
+foreach my $k (keys(%{$content[1]})) {
     $allkeys->{$k} += $content[1]->{$k};
 }
 
-@format = (' ','*');
-
 # show diff of the two sets:
-my $char;
+my $char="";
 foreach my $k (sort(keys(%{$allkeys}))) {
     $char='<' if ( exists($content[0]->{$k} ));
     $char='>' if ( exists($content[1]->{$k} ));
     $char='-' if ( exists($content[1]->{$k}) && exists($content[0]->{$k} ) );
-    print "${char}${k}${eol}\n";
-}
+    print "${char}:${k}${eol}\n";
 
+}
 
 map { close($_); } @fg;
 
