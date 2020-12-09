@@ -31,7 +31,7 @@ fi
 
 
 expected_type="application/pdf"
-type="$(file -b --mime-type 2020_OTTOBRE_SEBASTIANI_FABRIZIO_ARAKNE.pdf)"
+type="$(file -b --mime-type "$FILE")"
 
 if [[ $type !=  $expected_type ]]; then
     echo "warning: file seems not to be mime-type $expected_type , but $type"
@@ -47,6 +47,7 @@ echo "path: $FILE"
 echo "dir : $dirname"
 echo "name: $filename"
 echo "ext.: $extension"
+echo "mime type: $type"
 echo
 
 read -p "INSERT PASSWORD > "  -s PWD
@@ -54,7 +55,7 @@ echo
 
 ofile="${filename}_no_pwd.$extension"
 
-
+echo "processsing..."
 qpdf --password="$PWD" --decrypt "$FILE" "$ofile"
 
 if [[ $? != 0 ]]; then
