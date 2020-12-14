@@ -18,10 +18,11 @@ then execute, one time only:
 then, tell bash to use pegaso, edit your $HOME/.bashrc and add:
 
 `export PATH="$PATH:$HOME/opt/pegaso/bin"`
+`export PEGASO_ROOT="$HOME/opt/pegaso"`
 
 at the end you may also want to add:
 
-`source $HOME/opt/pegaso/lib/bash/bashrc.lib.sh`
+`source $PEGASO_ROOT/lib/bash/bashrc.lib.sh`
 
 # usage
 
