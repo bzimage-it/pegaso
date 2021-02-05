@@ -2,6 +2,7 @@
 
 # Changelog:
 # 1. 2020-01-26: first version
+# 2. 2021-02-05: manage empty PATTERN
 
 version=1
 
@@ -27,7 +28,7 @@ function abort () {
     $CMD version $version
 
     syntax:
-        $CMD <symbol-pattern> <string>
+        $CMD <symbol-pattern> [<pattern-string>]
 
     find a c symbol in a dir tree combining find/grep commands
 
@@ -58,4 +59,8 @@ cd "$PEGASO_START_SCRIPT_PWD" || abort "cannot change dir: $PEGASO_START_SCRIPT_
 PATTERN="$1"
 STRING="$2"
 
-find -name "$PATTERN" -exec grep -n "$STRING" {} \; -print
+if [ -n "$STRING" ]; then
+	find -name "$PATTERN" -exec grep -n "$STRING" {} \; -print
+else
+	find -name "$PATTERN"
+fi
