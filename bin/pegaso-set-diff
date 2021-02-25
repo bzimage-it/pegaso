@@ -1,76 +1,278 @@
-#!/usr/bin/perl
-use File::Basename;
-my $name = basename($0);
+# from ordered_set import OrderedSet
 
-if(@ARGV == 0) {
-    print <<EOF;
-	$name <file1> <file2> [perl-filter-extra-code] [end-of-line-char]
+import sys
+import re
+import argparse
+import textwrap
+input_str=['','']
 
-	compare two set of text file; each line is an elment;
-        extra filter in perl sintax can be applied to filter 
-        input before processed; tipicaly s/regex/new/; 
-        empty lines are ignored.
+parser = argparse.ArgumentParser(
+    description='Show differences of two set of records',
+    formatter_class=argparse.RawDescriptionHelpFormatter,
+    epilog='''
+input format:
+      input is get line by line and records of the two sets
+      are separated by RECSEP into each line;
+      also spaces before and after the RECSEP are removed
+      and not considered part of the record.
+      duplicates in each set are considered only one.
 
-        output is showed in sorted lines with field:
-        <this line is present only in file1
-        >this line is present only in file2
-	-this line is present in both files
-	    
-	examples:
-        raw compare:
-           $name myfile1 myfile2 
-        avoid spaces at end of lines:
-           $name myfile1 myfile2 's/\s+\$//o;'
-        ignore all spaces and print special % at end of each print:
-           $name myfile1 myfile2 's/\s+//og;' %
+filename and stdin:
+      if no filename is given, the input is taken from stdin
+      and the two sets are separed by a single line that
+      shall be equal to the SETSEP;
+      if one only filename is given, the first input set is taken 
+      and the second one from stdin;
+      if two filename are given both set 1 and set 2 are get
+      from them rispectively and no input is taken from stdin.
 
-EOF
-    exit(1);
-}
+diff output:
+      the output of diff is showed each line per record,
+      in ascending sorted order.
+      records that belong to first set only are showed in 
+      left only side; 
+      records that belong to second set only are showed in 
+      right only side; 
+      records that belong to both sets are showed in both
+      sides (unless -s option given);
+      when a difference is found an asterisk (*) is showed in the
+      most right (unless -s option given);
 
-$file[0] = shift;
-$file[1] = shift;
+example:
+      $ echo -e "apple, orange , nut\\n orange, nut,cherry" > foo.txt
+      $ echo -e "apple, orange , banana,\\n cherry, coconut" > bar.txt
+      $ %(prog)s foo.txt bar.txt
+      apple   apple  
+              banana   *
+      cherry  cherry 
+      coconut          *
+      nut              *
+      orange  orange 
 
-$filter = shift || '';
-$eol = shift || '';
+    ''')
+parser.add_argument("-rs","--record-separator",
+                    dest='recsep',required=False , default= ',',
+                    help="record separator, default '%(default)s'",                    
+)
+parser.add_argument("-ss","--set-separator",
+                    dest='setsep', required=False , default= '---',
+                    help="set separator, used for stdin input; default '%(default)s'",                    
+)
+parser.add_argument("-l","--lower-case",dest="lower",action='store_true',
+                    help="load data in lower case"
+)
+parser.add_argument("-u","--upper-case",dest="upper",action='store_true',
+                    help="load data in upper case"                    
+)
+parser.add_argument("-s","--short-diff",dest="short",action='store_true',
+                    help="show short diff mode: ignore equal records; (asterisk will not be printed)"
+)
+parser.add_argument("filename1", default = None, nargs="?",
+                    help="first file name to be read as a first set of records")
+parser.add_argument("filename2", default = None, nargs="?",
+                    help="second file name to be read as a second set of records")
+parser.add_argument('--verbose', '-v', action='count', default=0,
+                    help=f"""set incremental verbose level of output: 
+none:only show differences; 
+-v:show also final set; 
+-vv: show also removed duplicates; 
+-vvv:show also final statistics; 
+-vvvv: show also original input set.""")
+args = parser.parse_args()
 
-@fh = map { open my $fh, '<', $_  or die "cannot open file $_"; $fh } @file;
 
-sub read_file () {
-    my $fh = shift;
+separator=args.recsep
+# stdinmode
+#   0 read nothing from file
+#   1 read file 1 from file
+#   2 read file 2 from file
+#   3 read both from file
+filemode=0
+f1=None
+
+
+def eprint(msg):
+    print(msg, file=sys.stderr)
+
+def abort(msg,code = 1):
+    eprint(msg)
+    sys.exit(code)
+
+
+if args.verbose>4:
+    abort(f"too many -v counts ({args.verbose})")
+
+
+if args.lower and args.upper:
+    abort(f"incompatible options -u and -l cannot be used together")
     
-    my $content = {};
-    my $in;
-    while(<$fh>) {
-	chomp;
-	eval ( $filter ) if($filter);
-	if($_ ne '') {
-	    $content->{$_}++;
-	}
-    }
-    return $content;
-}
+# print(f"stdinmode={stdinmode} f1={args.filename1}")
+fname    = [args.filename1, args.filename2]
 
-@content = map { &read_file($_) } @fh;
+# read from files:
+for i in [0,1]:
+    if fname[i] is not None:   
+        filemode |= i+1
+        try:
+            with open(fname[i],"r") as f:
+                for line in f:
+                    if args.lower:
+                        line=line.lower()
+                    if args.upper:
+                        line=line.upper()
+                    input_str[i]+=line.rstrip("\n")
+                    input_str[i]+=separator
+        except FileNotFoundError:
+            abort("file not found: "+fname[i])            
+        except Exception as e:
+            abort(str(e))
+        
+            
+# read from stdin:                
+n = [0,1,-1,-1][filemode]
+    
+if filemode != 3:
+    for line in sys.stdin:
+        # print ('++++ ',line)
+        line=line.rstrip("\n")
+        # print ('ssss |{}|'.format(line))
+        if filemode==0 and line == args.setsep:
+            n += 1
+            # print ('              INC')
+            if n == 2:
+                break
+        else:
+            input_str[n]+=line
+            input_str[n]+=separator
 
-my $allkeys = {};
+def myreduce(x):
+    s = re.sub('[\s\n]+','',  re.sub(separator+'+',separator,x))
+    return list(filter (lambda x:x!=''  ,s.split(separator)))
 
-foreach my $k (keys(%{$content[0]})) {
-    $allkeys->{$k} = $content[0]->{$k};
-}
-foreach my $k (keys(%{$content[1]})) {
-    $allkeys->{$k} += $content[1]->{$k};
-}
+# snippet from:
+# https://www.geeksforgeeks.org/python-program-print-duplicates-list-integers/
+def repeat(x):
+    _size = len(x) 
+    repeated = [] 
+    for i in range(_size): 
+        k = i + 1
+        for j in range(k, _size): 
+            if x[i] == x[j] and x[i] not in repeated: 
+                repeated.append(x[i]) 
+    return repeated 
 
-# show diff of the two sets:
-my $char="";
-foreach my $k (sort(keys(%{$allkeys}))) {
-    $char='<' if ( exists($content[0]->{$k} ));
-    $char='>' if ( exists($content[1]->{$k} ));
-    $char='-' if ( exists($content[1]->{$k}) && exists($content[0]->{$k} ) );
-    print "${char}:${k}${eol}\n";
+# print(str(input_str))
 
-}
+subst = list(map( myreduce , input_str))
 
-map { close($_); } @fg;
+
+if args.verbose >= 4:
+    for i in [0,1]:
+        print
+        print("===== ORIGINAL SET {} : \n".format(i+1))
+        print(", ".join(subst[i]))
+
+# remove duplicates from lists, and count them:    
+# print('=== DUPLICATES (removed):')
+
+duplicates = [ [] , [] ]
+
+for i in [0,1]:
+    duplicates[i] = repeat(subst[i])
+    if args.verbose >= 2:
+        if len(duplicates[i])>0:
+            print ("===== SET {} DUPLICATES: \n".format(i+1))
+            print(", ".join(duplicates[i]))
+        pass
+    tmplist = list(dict.fromkeys(subst[i]))
+    subst[i]= sorted(tmplist)
+
+
+if args.verbose >= 1:
+    for i in [0,1]:
+        print
+        print("===== FINAL SET {} : \n".format(i+1))
+        print(", ".join(subst[i]))
+
+    
+al=subst[0]
+bl=subst[1]
+
+ai=0
+bi=0
+
+difflist=[]
+longest=[0,0]
+
+while ai<len(al) and bi<len(bl):
+    t= [ al[ai],bl[bi] ]
+    if al[ai] < bl[bi]:
+        t[1]=''        
+        ai+=1
+    elif al[ai] > bl[bi]:
+        t[0]=''        
+        bi+=1
+    else:
+        ai+=1
+        bi+=1
+    difflist.append(t)
+    for i in [0,1]:
+        if len(t[i])>longest[i]:
+            longest[i]=len(t[i])
+    pass
+
+if ai<len(al):
+    for x in al[ai:]:
+        difflist.append( [x,''] )
+if bi<len(bl):
+    for x in bl[bi:]:
+        difflist.append( ['',x] )
+
+only_in=[0,0]
+
+if args.verbose > 0:
+    print("===== DIFF_BEGIN:")
+    
+for t in difflist:
+    if t[0]=='' or t[1]=='':
+        if args.short:
+            xend="\n"
+        else:
+            xend="   *\n"
+        eq=False
+    else:
+        xend="\n"
+        eq=True
+    # print (" {:<longest[0]} | {:<longest[1]}".format(t[0],t[1]))
+    if not (eq and args.short):
+        print ('{s1:<{l1}} {s2:<{l2}}'.format(s1=t[0], l1=longest[0],s2=t[1],l2=longest[1] ), end = xend)
+    for i in [0,1]:
+        if(t[i] == ''):
+            only_in[1 if i==0 else 0]+=1
+    pass
+
+if args.verbose > 0:
+    print("===== DIFF_END")
+
+if only_in[0] == 0 and only_in[1] == 0:
+    print('===== THE TWO SETS ARE IDENTICAL !!!!')
+    print
+    pass
+
+# eprint(str(args.verbose))
+
+if args.verbose >= 3:
+    for i in [0,1]:
+        if len(duplicates[i])>0:
+            print('===== SET {}: duplicates {} (removed before diff)'.
+                  format(i,len(duplicates[i])))
+            print ('===== SET {}: TOTAL: {} | only in SET: {} | diff: {}'.
+                   format(i+1,len(subst[i]),only_in[i],len(subst[i]) - only_in[i] ))
+
+
+
+
+        
+
+
 
