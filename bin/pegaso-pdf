@@ -16,59 +16,214 @@ PEGASO_SCRIPT_DIR="$( cd -P "$( dirname "$PEGASO_SOURCE" )" && pwd )"
 PEGASO_SCRIPT_FILE=$(basename "$PEGASO_SOURCE")
 # end of snipped
 
-FILE="$1"
+CMD="$1"
+FILE="$2"
+
+function syntax() {
+	echo "sintax: ${PEGASO_SCRIPT_FILE} removepwd|shrink|grayscale <filename>"
+	
+}
+
+type=
+dirname=
+filename=
+extension=
+filename=
+
+function transform_name() {
+    local FILE="$1"
+    local postfix="$2"
+    dirname="$(dirname "$FILE")"
+    filename="$(basename -- "$FILE")"
+    extension="${filename##*.}"
+    filename="${filename%.*}"
+
+    echo
+    echo "path: $FILE"
+    echo "dir : $dirname"
+    echo "name: $filename"
+    echo "ext.: $extension"
+    echo "mime type: $type"
+    echo
+    
+    ofile="${filename}${postfix}.$extension"
+    echo "output: $ofile"
+    echo
+}
+
+function removepwd() {
+	local FILE="$1"
+	which qpdf > /dev/null
+	if [[ $? != 0 ]]; then
+	    echo "no 'qpdf' command found, install it first"
+	    exit 2
+	fi
+
+
+	expected_type="application/pdf"
+	type="$(file -b --mime-type "$FILE")"
+
+	if [[ $type !=  $expected_type ]]; then
+	    echo "warning: file seems not to be mime-type $expected_type , but $type"
+	fi
+
+	transform_name "$FILE" "_nopwd"
+
+	read -p "INSERT PASSWORD > "  -s PWD
+	echo
+
+	ofile="${filename}_no_pwd.$extension"
+
+	echo "processsing..."
+	qpdf --password="$PWD" --decrypt "$FILE" "$ofile"
+
+	if [[ $? != 0 ]]; then
+	    echo "some error occurred"
+	fi
+
+	if [[ -f $ofile ]]; then
+	    echo "output file: $ofile"
+	    which evince > /dev/null
+	    if [[ $? == 0 ]]; then
+		evince $ofile
+	    fi
+	fi
+
+}
+
+
+# Notice about shrink(), check_smaller() , do_shrink() functions. Snippet from:
+# http://www.alfredklomp.com/programming/shrinkpdf/
+# ==========================================================
+	# http://www.alfredklomp.com/programming/shrinkpdf
+	# Licensed under the 3-clause BSD license:
+	#
+	# Copyright (c) 2014-2019, Alfred Klomp
+	# All rights reserved.
+	#
+	# Redistribution and use in source and binary forms, with or without
+	# modification, are permitted provided that the following conditions are met:
+	# 1. Redistributions of source code must retain the above copyright notice,
+	#    this list of conditions and the following disclaimer.
+	# 2. Redistributions in binary form must reproduce the above copyright notice,
+	#    this list of conditions and the following disclaimer in the documentation
+	#    and/or other materials provided with the distribution.
+	# 3. Neither the name of the copyright holder nor the names of its contributors
+	#    may be used to endorse or promote products derived from this software
+	#    without specific prior written permission.
+	#
+	# THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+	# AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+	# IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+	# ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE
+	# LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR
+	# CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF
+	# SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS
+	# INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN
+	# CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
+	# ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
+	# POSSIBILITY OF SUCH DAMAGE.
+
+function shrink ()
+{
+	gs					\
+	  -q -dNOPAUSE -dBATCH -dSAFER		\
+	  -sDEVICE=pdfwrite			\
+	  -dCompatibilityLevel=1.3		\
+	  -dPDFSETTINGS=/screen			\
+	  -dEmbedAllFonts=true			\
+	  -dSubsetFonts=true			\
+	  -dAutoRotatePages=/None		\
+	  -dColorImageDownsampleType=/Bicubic	\
+	  -dColorImageResolution=$3		\
+	  -dGrayImageDownsampleType=/Bicubic	\
+	  -dGrayImageResolution=$3		\
+	  -dMonoImageDownsampleType=/Subsample	\
+	  -dMonoImageResolution=$3		\
+	  -sOutputFile="$2"			\
+	  "$1"
+}
+
+function check_smaller ()
+{
+	# If $1 and $2 are regular files, we can compare file sizes to
+	# see if we succeeded in shrinking. If not, we copy $1 over $2:
+	if [ ! -f "$1" -o ! -f "$2" ]; then
+		return 0;
+	fi
+	ISIZE="$(echo $(wc -c "$1") | cut -f1 -d\ )"
+	OSIZE="$(echo $(wc -c "$2") | cut -f1 -d\ )"
+	if [ "$ISIZE" -lt "$OSIZE" ]; then
+		echo "Input smaller than output, doing straight copy" >&2
+		cp "$1" "$2"
+	fi
+}
+
+
+function do_shrink() {
+
+	# Output resolution defaults to 72 unless given:
+	if [ ! -z "$3" ]; then
+		res="$3"
+	else
+		res="72"
+	fi
+    
+	IFILE="$1"
+	transform_name "$IFILE" "_shrinked_$res"
+	# Need an input file:
+	if [ -z "$IFILE" ]; then
+		usage "$0"
+		exit 1
+	fi
+
+	# Output filename defaults to "-" (stdout) unless given:
+	if [ ! -z "$2" ]; then
+		OFILE="$2"
+	else
+		OFILE="-"
+	fi
+
+	shrink "$IFILE" "$ofile" "$res" || exit $?
+
+	check_smaller "$IFILE" "$ofile"
+}
+
+
+function do_grayscale() {
+    local FILE="$1"
+    transform_name "$FILE" "_bw"
+    # snippet from :
+    # https://superuser.com/questions/104656/convert-a-pdf-to-greyscale-on-the-command-line-in-floss by https://superuser.com/users/107493/eroen
+    gs \
+	-sOutputFile="$ofile" \
+	-sDEVICE=pdfwrite \
+	-sColorConversionStrategy=Gray \
+	-dProcessColorModel=/DeviceGray \
+	-dCompatibilityLevel=1.4 \
+	-dNOPAUSE \
+	-dBATCH "$FILE"
+}
 
 if [[ -z $FILE ]]; then
-    echo "sintax: ${PEGASO_SCRIPT_FILE} <filename>"
+    syntax
     exit 1
 fi
-
-which qpdf > /dev/null
-if [[ $? != 0 ]]; then
-    echo "no 'qpdf' command found, install it first"
-    exit 2
-fi
-
-
-expected_type="application/pdf"
-type="$(file -b --mime-type "$FILE")"
-
-if [[ $type !=  $expected_type ]]; then
-    echo "warning: file seems not to be mime-type $expected_type , but $type"
-fi
-
-dirname="$(dirname "$FILE")"
-filename="$(basename -- "$FILE")"
-extension="${filename##*.}"
-filename="${filename%.*}"
-
-echo
-echo "path: $FILE"
-echo "dir : $dirname"
-echo "name: $filename"
-echo "ext.: $extension"
-echo "mime type: $type"
-echo
-
-read -p "INSERT PASSWORD > "  -s PWD
-echo
-
-ofile="${filename}_no_pwd.$extension"
-
-echo "processsing..."
-qpdf --password="$PWD" --decrypt "$FILE" "$ofile"
-
-if [[ $? != 0 ]]; then
-    echo "some error occurred"
-fi
-
-if [[ -f $ofile ]]; then
-    echo "output file: $ofile"
-    which evince > /dev/null
-    if [[ $? == 0 ]]; then
-	evince $ofile
-    fi
-fi
-
-
+echo "CMD=$CMD"
+case "$CMD" in
+    removepwd)
+	removepwd "$FILE"
+	;;
+    shrink)
+	shift
+	do_shrink "$FILE" $*
+	;;
+    grayscale)
+	do_grayscale "$FILE"
+	;;
+    *)
+	echo "unknown command: $CMD"
+	syntax
+	;;
+esac
 
