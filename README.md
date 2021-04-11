@@ -31,6 +31,10 @@ pegaso provides different commands:
 
 `pegaso-*`
 
+# Other compoments and tools
+
+* ```PHP-crud``` is a simple PHP script to execute C-R-U-D operations on remote variable that can be used for remote configuration and settings.
+* ```user-net-access``` is a simple daemon to enable or disable internet access for some specific user list on a linux host. Can be used for simple parental control. Require ```PHP-crud``` to be available somewhere.
 
 
 
