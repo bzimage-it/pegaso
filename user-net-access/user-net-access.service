@@ -1,0 +1,18 @@
+[Unit]
+Description=NETWORK per-user network ENABLE/DISABLE Daemon
+
+After=network.target
+Require=network.target
+
+StartLimitIntervalSec=1
+
+[Service]
+Type=simple
+Restart=always
+RestartSec=1
+User=root
+# modify the correct path here:
+ExecStart=bash /my-pegaso-root-dir/user-net-access/user-net-access.sh
+
+[Install]
+WantedBy=multi-user.target
