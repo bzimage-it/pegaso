@@ -12,7 +12,9 @@ Restart=always
 RestartSec=1
 User=root
 # modify the correct path here:
-ExecStart=bash /my-pegaso-root-dir/user-net-access/user-net-access.sh
+# rememebr to make executable the file:
+# sudo chmod +x /my-pegaso-root-dir/user-net-access/user-net-access.sh
+ExecStart=/my-pegaso-root-dir/user-net-access/user-net-access.sh
 
 [Install]
 WantedBy=multi-user.target
