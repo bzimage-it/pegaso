@@ -39,12 +39,15 @@ copy the user-net-access.service file to your systemd directory, eg:
 ```
 sudo cp user-net-access.service /etc/systemd/system/
 ```
+make executable the script:
+
+```sudo chmod +x /my-pegaso-root-dir/user-net-access/user-net-access.sh```
 
 modify the copied file and set the correct path to your script, check and
 update the line:
 
 ```
-ExecStart=bash /my-pegaso-root-dir/user-net-access/user-net-access.sh
+ExecStart=/my-pegaso-root-dir/user-net-access/user-net-access.sh
 ```
 then enabling and activate with systemd:
 
