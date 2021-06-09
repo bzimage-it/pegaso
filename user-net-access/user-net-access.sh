@@ -47,8 +47,9 @@ function load_conf() {
 	source "$conf" || log "not found: $conf"
 	log "conf successfully loaded"
 	# env:
-	test -z "$UNA_SLEEP" && UNA_SLEEP=$((5*60))
-	log "using UNA_SLEEP=$UNA_SLEEP"
+	test -z "$UNA_SLEEP_M" && UNA_SLEEP_M=5
+	UNA_SLEEP=$(($UNA_SLEEP_M*60))
+	log "using UNA_SLEEP_M=$UNA_SLEEP_M ($UNA_SLEEP secs)"
 	test -z "$UNA_USERS" && UNA_USERS=$USER
 	log "using UNA_USERS=$UNA_USERS"
 	test -z "$UNA_IF" && abort "undefined env UNA_IF"
@@ -125,13 +126,13 @@ rm -f "$foutput" "$fcode"
 
 while true; do    
     for UNA_USER in $UNA_USERS; do
-	var=$(eval "$UNA_CRUD_VAR_TEMPLATE")
+	var=$(eval "$UNA_CRUD_VAR_ENABLE_TEMPLATE")
 	url="${UNA_CRUD_URL}?cmd=read&var=${var}&pwd=${UNA_CRUD_PWD}"
 	log GET: $url	
 	curl --silent "$url" -o $foutput -w "%{http_code}" > $fcode
 	CODE=$(cat $fcode)
 	OUT=$(cat $foutput)
-	log RESPONSE: [$CODE] $OUT
+	log "read | RESPONSE: " [$CODE] $OUT
 	case "$CODE" in
 	    200)
 		case "${OUT^^}" in
@@ -139,7 +140,29 @@ while true; do
 			action disable $UNA_USER
 			;;
 		    "ENABLED"|"ENABLE"|"Y"|"YES")
-			action enable $UNA_USER
+			var=$(eval "$UNA_CRUD_VAR_TIME_TEMPLATE")
+			url="${UNA_CRUD_URL}?cmd=update&var=${var}&verbose=0&dec=${UNA_SLEEP_M}&pwd=${UNA_CRUD_PWD}"
+			log GET: $url
+			curl --silent "$url" -o $foutput -w "%{http_code}" > $fcode
+			CODE2=$(cat $fcode)
+			OUT2=$(cat $foutput)
+			log "update | RESPONSE: " [$CODE2] $OUT2
+			case "$CODE2" in
+			    200)
+				if [ "$OUT2" -gt 0 ] ; then
+				    log NOT EXPIRED time $OUT2
+				    action enable $UNA_USER
+
+				else
+				    log EXPIRED time $OUT2
+				    action disable $UNA_USER
+				fi
+				;;
+			    *)
+				log "update | username=$UNA_USER http response: $CODE, if no time specified, enable"
+				 action enable $UNA_USER
+				;;
+			esac		       
 			;;
 		    *)
 			log "username=$UNA_USER error value: $OUT"
@@ -147,7 +170,7 @@ while true; do
 		esac
 		;;
 	    *)
-		log "username=$UNA_USER http response: $CODE"
+		log "read | username=$UNA_USER http response: $CODE"
 		;;
 	esac
     done
