@@ -36,7 +36,12 @@ function read_filename($filename) {
     if($size == 0) {
         return "";
     }else{
-        $val = fread($myfile,$size) or abort("cannot read on $var",$internal);
+        # echo "BYTES($size)";
+        # curious bug here: using fread do not work if string into file start with '0' then reading fails; why?
+        # but file_get_contents seems to work.
+        # $val = fread($myfile,$size) or abort("cannot read on $filename",$internal);
+        $val = file_get_contents($filename);
+        # echo "VAL($val)";
         return $val;
     }
 }
@@ -97,8 +102,10 @@ if($cmd == 'update') {
         if($dec) {
             $val = $curval - $dec;
         }
+        $val = "$val";
     }
     $myfile = fopen($filename, "w") or abort("Unable to write $var",$bad_req);
+    # echo "W($val)";
     fwrite($myfile,$val) or abort("cannot write on $var",$internal);
     if($verbose) {
         echo "UPDATED $var = $val";
