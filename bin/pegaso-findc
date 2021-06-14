@@ -60,7 +60,7 @@ PATTERN="$1"
 STRING="$2"
 
 if [ -n "$STRING" ]; then
-	find -name "$PATTERN" -exec grep -n "$STRING" {} \; -print
+	find -name "$PATTERN" -exec grep --color=auto -n "$STRING" {} \; -print
 else
 	find -name "$PATTERN"
 fi
