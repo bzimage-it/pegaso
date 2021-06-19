@@ -47,6 +47,12 @@ function echo_tag($name,$attr,$endtag) {
     echo $endtag;
 }
 
+function is_def($v) {
+    if (!isset($v)) {
+        return FALSE;
+    }
+    return strlen($v) > 0;
+}
 
 function read_filename($filename) {
     $myfile = fopen($filename, "r") or abort("Unable to read $var",$bad_req);
@@ -110,11 +116,11 @@ if($cmd == 'update') {
     $val_special = return_if_def('val_special',"");
     $inc = return_if_def('inc',"");
     $dec = return_if_def('dec',"");
-    $ndef = ( (int) (bool) $val ) + ( (int) (bool) $inc ) + ( (int) (bool) $dec ) ;
+    $ndef = ( (int) (bool) ( is_def($val) or is_def($val_special)) ) + ( (int) (bool) is_def($inc) ) + ( (int) (bool) is_def($dec) ) ;
     if ($ndef==0) {
-        abort("no option defined between: val, inc, dec",$bad_req);
+        abort("no option defined between: (val or val_special) , inc, dec ",$bad_req);
     }elseif($ndef>1) {
-        abort("incompatible option defined, only one between: val, inc, dec; $ndef defined in total",$bad_req);
+        abort("incompatible option defined, only one between: (val or val_special), inc, dec; $ndef defined in total",$bad_req);
     }
     if($inc or $dec) {
         $curval = read_filename($filename);
@@ -169,7 +175,7 @@ if($cmd == 'update_interactive') {
     <?php
 
     echo "<form action=\"$this_script\" method=\"get\">";
-    echo "<label for=\"val\">value for variable:<br><b>$var</b></label><br>";
+    echo "<label for=\"val\">value for variable:<br><b>$var =$curval</b></label><br>";
     field('text','val',$curval);
     field('hidden','pwd',$pw);
     field('hidden','var',$var);
