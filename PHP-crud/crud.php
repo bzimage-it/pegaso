@@ -5,13 +5,19 @@ require "config.php";
 $bad_req = 400;
 $no_auth = 401;
 $internal = 500;
+$cmd_error = TRUE;
+$this_script="/crud/crud.php";
+define('CSSPATH', './'); //define css path
+$hname = $_SERVER['host_name'];
 
 function abort($msg,$code) {
     /* http_response_code ();
     http_response_code ( $code );
     http_response_code (); */
-    header("Location: /crud.php",TRUE,$code);
-    die ("$msg");
+    global $hname;
+    global $this_script;
+    header("Location: $this_script",TRUE,$code);
+    die ("$hname : $this_script : $msg");
     echo "-------";
 }
 
@@ -27,6 +33,18 @@ function return_if_def($what,$default) {
         return $default;
     }
     return $_GET[$what];
+}
+
+function field($t,$k,$v) {
+    echo "<input type=\"$t\" id=\"$k\" name=\"$k\" value=\"$v\">";
+}
+
+function echo_tag($name,$attr,$endtag) {
+    echo "<$name";
+    foreach ($attr as $k => $v ) {
+        echo " $k=\"$v\"";
+    }
+    echo $endtag;
 }
 
 
@@ -55,6 +73,7 @@ if ( $pw != $secret) {
 }
 
 if($cmd == 'create') {
+    $cmd_error = FALSE;
     $var = check_and_return('var');
     $val = check_and_return('val');
     $filename = "$var.var";
@@ -71,6 +90,7 @@ if($cmd == 'create') {
 }
 
 if($cmd == 'read') {
+    $cmd_error = FALSE;
     $var = check_and_return('var');
     $filename = "$var.var";
     $val = read_filename($filename);
@@ -78,6 +98,7 @@ if($cmd == 'read') {
 }
 
 if($cmd == 'update') {
+    $cmd_error = FALSE;
     /* note that an "update & read" effect in one shot can be get setting verbose=0 */
     $var = check_and_return('var');
     $filename = "$var.var";
@@ -86,6 +107,7 @@ if($cmd == 'update') {
     }
     /* only one of 'val' , 'inc' , 'dec' can be defined: */
     $val = return_if_def('val',"");
+    $val_special = return_if_def('val_special',"");
     $inc = return_if_def('inc',"");
     $dec = return_if_def('dec',"");
     $ndef = ( (int) (bool) $val ) + ( (int) (bool) $inc ) + ( (int) (bool) $dec ) ;
@@ -104,6 +126,10 @@ if($cmd == 'update') {
         }
         $val = "$val";
     }
+    if($val_special) {
+        /* if given, take precedente over all: */
+        $val = $val_special;
+    }
     $myfile = fopen($filename, "w") or abort("Unable to write $var",$bad_req);
     # echo "W($val)";
     fwrite($myfile,$val) or abort("cannot write on $var",$internal);
@@ -114,7 +140,82 @@ if($cmd == 'update') {
     }
 }
 
+if($cmd == 'update_interactive') {
+    $cmd_error = FALSE;
+    /* note that an "update & read" effect in one shot can be get setting verbose=0 */
+    $var = check_and_return('var');
+    $filename = "$var.var";
+    if(!file_exists($filename)) {
+        abort("var do not exists: $var",$bad_req);
+    }
+    $specials = return_if_def('specials',"");
+    $curval = read_filename($filename);
+    
+    /*
+     css credits and snippet from: 
+     https://stackoverflow.com/questions/10876953/how-to-make-a-radio-button-unchecked-by-clicking-it
+     https://stackoverflow.com/questions/6315772/how-to-import-include-a-css-file-using-php-code-and-not-html-code/6315792 
+    */
+    
+    $cssItem = 'crud.css'; //css item to display
+    ?>    
+
+    <html>
+    <head>
+    <title><?php echo $var; ?> modify</title>
+    <link rel="stylesheet" href="<?php echo (CSSPATH . "$cssItem"); ?>" type="text/css">
+    </head>
+    <body>
+    <?php
+
+    echo "<form action=\"$this_script\" method=\"get\">";
+    echo "<label for=\"val\">value for variable:<br><b>$var</b></label><br>";
+    field('text','val',$curval);
+    field('hidden','pwd',$pw);
+    field('hidden','var',$var);
+    field('hidden','cmd','update');
+    if($specials) {
+        echo "<p>You may also choose special values:</p>";
+        
+        echo_tag('input', array( 
+                'type' => 'radio',
+                'name' => 'val_special',
+                'id' => 'uncheckAll',
+                'value' => "", # this is in order to pass in the submit a val_special = '' and avoid it's effect in 'update' command when no radio buttons are checked 
+                'checked' => 'checked'
+             ), '/>');
+        # echo "<input type=\"radio\" name=\"val_special\" id=\"uncheckAll\" checked=\"checked\" />";
+        
+        $a_specials = explode(",", $specials);
+        # echo "<div>";
+        foreach ($a_specials as &$s) {
+            echo "<label>";
+            echo_tag('input', array( 
+                        'type' => 'radio',
+                        'name' => 'val_special',
+                        'id' => "v_$s",
+                        # 'checked' => 'unchecked',
+                        'value' => $s,
+                   ), '/>');
+                # <input type="radio" name="group1" id="radio2" />
+            echo_tag ( 'label', array(
+                   'for' => 'uncheckAll'
+                ),'></label>');
+            echo "$s</label><br>";
+            # echo "<input type=\"radio\" id=\"v_$s\" name=\"val_special\" value=\"$s\">";
+            # echo "<label for=\"v_$s\">$s</label>";
+        }
+        # echo "</div>";
+    }
+    echo "<br><input type=\"submit\" value=\"UPDATE\">";
+    echo "</form>";
+    echo "</body>";
+    echo "</html>";
+}
+
+
 if($cmd == 'delete') {
+    $cmd_error = FALSE;
     $var = check_and_return('var');
     $filename = "$var.var";
     if(!file_exists($filename)) {
@@ -126,10 +227,14 @@ if($cmd == 'delete') {
 }
 
 if($cmd == 'list') {
+    $cmd_error = FALSE;
     foreach (glob("*.var") as $filename) {
         echo basename($filename,".var")."<br>";
     }
 }
 
+if($cmd_error) {
+    abort("unrecognized command: $cmd",$bad_req);
+}
 http_response_code (200);
 ?>

@@ -1,0 +1,27 @@
+#uncheckAll {
+    display: none;
+}
+
+#uncheckAll:checked ~ * label[for="uncheckAll"] {
+    display: none;
+}
+
+label {
+    cursor: pointer;
+}
+
+label:not([for]) {
+    position: relative;
+}
+
+label[for="uncheckAll"] {
+    position: absolute;
+    top: 0;
+    right: 0;
+    bottom: 0;
+    left: 0;
+}
+
+input[name="val_special"]:not(:checked) + label[for="uncheckAll"] {
+    display: none;
+}
