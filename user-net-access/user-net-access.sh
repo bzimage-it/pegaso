@@ -25,14 +25,23 @@ PEGASO_PARENT_ROOT="$(dirname "$PEGASO_ROOT")"
 # echo "$PEGASO_ROOT"
 # echo "$PEGASO_PARENT_ROOT"
 
-foutput=/tmp/netaccess-out.tmp
-fcode=/tmp/netaccess-code.tmp
 
+tdir=/tmp/user-net-access
+wakeupdir=$tdir/wakeup
+foutput=$tdir/out.tmp
+fcode=$tdir/code.tmp
+LOCKFILE=/var/run/user-net-access.pid
 
+P_COMMAND="$1"
+P_USER="$2"
 
-CMD="$1"
 function log() {
     echo "$$ "$(date --iso-8601=seconds)" $*"
+}
+
+function cleanup() {
+    log "EXIT CLEANUP PID $$"
+    rm -rfv $LOCKFILE $tdir 
 }
 
 trap 'log "Caught SIGUSR1 (debugging)"' SIGUSR1
@@ -135,6 +144,19 @@ function action() {
 	show)
 	    iptables -L OUTPUT -n -v	    
 	    ;;
+	wakeup)
+	    if [ -f ${LOCKFILE} ]; then
+		THEPID=`cat ${LOCKFILE}`
+		# kill -0 $THEPID
+		log "wake up PID: $THEPID"
+	    else
+		log "WARNING: no daemon seems to be running"
+	    fi
+	    wf=$wakeupdir/"$USERNAME.$USER.$$.$RANDOM"
+	    echo > $wf
+	    rm -f $wf
+	    log "written and removed: $wf"	    
+	    ;;
 	*)
 	    abort "$CMD unknown"
 	    ;;
@@ -142,18 +164,41 @@ function action() {
     return 0
 }
 
-if [ -n "$2" ]; then
+
+for C in curl inotifywait; do
+    which $C || abort "command needed: $C"
+    log "FOUND: $C"
+done
+
+if [ -n "$P_USER" ]; then
     # used for testing:
-    action "$1" "$2"
+    action "$P_COMMAND" "$P_USER"
     exit 0
 fi
 
-if [ $UID != 0 ]; then
-    log "cannot run: shall be root"
-    exit 1
+if [ -n "$P_COMMAND" ] ; then
+    abort "given one param only"
 fi
 
-rm -f "$foutput" "$fcode"
+# goes in Daemon mode:
+# only root can run:
+if [ $UID != 0 ]; then
+    abort "cannot run: shall be root"
+fi
+# check lockfile:
+if [ -f ${LOCKFILE} ]; then
+    THEPID=`cat ${LOCKFILE}`
+    log "found PID $THEPID"
+    kill -0 $THEPID && abort "already running as PID="$(cat ${LOCKFILE})
+fi
+# install cleanup trap and create lockfile:
+trap 'cleanup;exit 2;' INT TERM EXIT
+echo $$ > ${LOCKFILE}
+# THEPID=`cat ${LOCKFILE}`
+# log "found --- PID $THEPID"
+rm -rf $tdir || abort "cannot remove $tdir"
+mkdir -m 767 -p $tdir || abort "cannot create $tdir"
+mkdir -m 767 -p $wakeupdir || abort "cannot create $wakeupdir"
 
 for UNA_USER in $UNA_USERS; do
     action create-user-chain $UNA_USER
@@ -219,7 +264,8 @@ while true; do
 	esac
     done
     log "going sleep for $UNA_SLEEP secs: zzzzz..."
-    # this "& + wait" is for allow debugging without spent time, use kill -SIGUSR1 to break sleep
-    sleep $UNA_SLEEP &
-    wait $!
+    # this "& + wait" is for allow debugging without spent time, use kill -SIGUSR1 to break sleep or use "wakeup" param
+    # sleep $UNA_SLEEP &
+    inotifywait -t $UNA_SLEEP -e create --quiet $wakeupdir
+    # wait $!
 done
