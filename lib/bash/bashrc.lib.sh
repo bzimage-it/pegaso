@@ -45,3 +45,36 @@ cd() {
 }
 
 
+# Fast zip execution of last "used" files in $HOME.
+# Use $HOME as as temporary working directory 
+# if found use 7z, otherwhice use zip
+# Parameters:
+#    tag: postfix to the file name. 
+#    n  : number of most recent used file to zip.
+# with no params show last 10 used files in $HOME
+
+function fz() {
+    if [ $# != 2 ];then
+	echo "<tag> <n>"
+	#    echo $0 "<tag> <file1> <file2>"
+ 	ls -lrt --hide='*~' $HOME | tail -n 10
+	return 0
+    fi
+    
+    TAG="$1"
+    N="$2"
+    ZIP="zip -9"
+    EXT="zip"
+
+    which 7z > /dev/null && ZIP="7z a -bd" && EXT=7z
+    
+    ( cd "$HOME" &&
+	  NOW=$(date +%Y-%m-%d-%H%M)
+	  FILES="$(ls -1rt --hide='*~' . | tail -n $N | xargs)" &&
+	      echo "putting $FILES into 7z ..." &&
+	      T="${NOW}-$TAG.$EXT" &&
+	      $ZIP "$T" $FILES &&
+	  echo "CREATED $HOME/$T" )
+    return $?
+}
+
