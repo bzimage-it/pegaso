@@ -1,0 +1,7 @@
+
+# my favourite .screenrc file.
+
+
+# open a new tab/window in the current directory.
+# taken from: https://stackoverflow.com/a/33241923/3280080
+bind c stuff "screen bash^M"
