@@ -33,23 +33,23 @@ pegaso provides different commands:
 
 # utils and utils2
 
-$PEGASO_ROOT/lib/bash/utils.lib.sh
+`$PEGASO_ROOT/lib/bash/utils.lib.sh`
 and
-$PEGASO_ROOT/lib/bash/utils2.lib.sh
+`$PEGASO_ROOT/lib/bash/utils2.lib.sh`
 
 provides powerfull functions to your bash. you can "source" them or
 add at the beginning of your script.
 
-utils2.sh is new version, while utils.sh is legasy.
+`utils2.sh` is new version, while `utils.sh` is legasy.
 
-utils2 provides:
+`utils2` provides:
 * log function support log level, colors, file descriptiors.
 * temporary file and automatic cleanup
 * debuggin with stack trace
 see source code for more details.
 you can also execute a demo directly executing:
 
- bash $PEGASO_ROOT/lib/bash/utils2.lib.sh
+`bash $PEGASO_ROOT/lib/bash/utils2.lib.sh`
 
 # Other compoments and tools
 
