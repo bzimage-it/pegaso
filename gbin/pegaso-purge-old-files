@@ -1,0 +1,93 @@
+#!/bin/bash
+
+PEGASO_START_SCRIPT_PWD=$(pwd)
+
+# this is a code snipped:
+# from http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in
+# to understand what directory it's stored in bash script itself
+
+PEGASO_SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$PEGASO_SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+  PEGASO_DIR="$( cd -P "$( dirname "$PEGASO_SOURCE" )" && pwd )"
+  PEGASO_SOURCE="$(readlink "$PEGASO_SOURCE")"
+  [[ $PEGASO_SOURCE != /* ]] && PEGASO_SOURCE="$PEGASO_DIR/$PEGASO_SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+done
+PEGASO_SCRIPT_DIR="$( cd -P "$( dirname "$PEGASO_SOURCE" )" && pwd )"
+PEGASO_SCRIPT_FILE=$(basename "$PEGASO_SOURCE")
+# end of snipped
+
+cd "$PEGASO_SCRIPT_DIR"
+cd .. || exit 1
+export PEGASO_ROOT="$(pwd)"
+
+PEGASO_PARENT_ROOT="$(dirname "$PEGASO_ROOT")"
+
+# echo "$PEGASO_ROOT"
+# echo "$PEGASO_PARENT_ROOT"
+
+
+RMFILE=.removed-files.list
+
+cmd="$1"
+dir="$2"
+days="$3"
+
+if [ -n "$dir" -a ! -d "$dir" ]; then
+	echo not exists dir :$tmp
+	exit 1
+fi
+
+if [ -z "$days" ]; then
+	days=90
+fi
+
+case "$cmd" in
+   "recursive")
+   	if [ "$dir" == "$HOME" ]; then
+   		echo "preventing recursive mode on $HOME"
+   		exit 1
+   	fi
+	find "$dir" -type f -mtime +"$days" -printf "%p %A+ %T+\n" -exec rm {} \;
+	find "$dir" -mindepth 1 -type d -empty -delete
+	echo DONE recursive: $dir
+	;;
+   "no-recursive")
+	find "$tmp" -maxdepth 1 -type f  -mtime +"${days}" ! -name ".*" -printf "%T+ %A+ %p+\n" -exec rm -f {} \;
+	echo DONE no recursive: $tmp
+	;;
+   "hold-n-most-recent-used")   	
+	export NFILES="$days"
+	cd "$dir" || exit 2
+	rm -f $RMFILE
+	t=$(mktemp)
+	echo "processing as temp dir: $dir n=$NFILES..."  
+	find -maxdepth 1 -mindepth 1 -type f -not -name '\.*' -printf "%A+|%p\n" | sort -r | perl -ne 'BEGIN { $n=0; } $n++; s/^[^\|]*\|//o; print if ($n>$ENV{NFILES});' | tee $RMFILE | xargs -d '\n' rm -f 
+	echo "removed files:"
+	cat $RMFILE
+	echo "====================| $DD |======== " >> $RMFILE
+	date >> $RMFILE
+	# cat $RMFILE	
+   	;;
+   *)
+   	echo "sintax:"
+   	echo "  $PEGASO_SCRIPT_FILE recursive    <directory-name> <n-days>"
+   	echo "  $PEGASO_SCRIPT_FILE no-recursive <directory-name> <n-days>"
+   	echo "  $PEGASO_SCRIPT_FILE hold-n-most-recent-used <directory-name> <no-files-to-hold>"
+   	;;
+esac
+
+
+
+# for $HOME/tmp  and $HOME dir in particular, for regular files only, let only most 
+# recent 50 files and delete all the rest:
+# note that %A+ is the access time, not modification time, so
+# files that are oftern open, are not deleted
+
+# purge ~/Downloads  90
+# purge_recursive ~/tmp 60
+# purge_recursive ~/Pictures 90
+# purge_no_recursive $HOME 90
+# hold_most_used $HOME
+
+
+

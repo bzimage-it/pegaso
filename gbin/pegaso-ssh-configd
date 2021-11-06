@@ -1,0 +1,8 @@
+
+C=config
+
+cd ${HOME}/.ssh &&
+chmod 700 $C.d &&
+cat $C.d/*.$C > $C &&
+chmod 600 $C &&
+echo generated: $(pwd)/$C
