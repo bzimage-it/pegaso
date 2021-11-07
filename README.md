@@ -39,9 +39,10 @@ and
 
 provides powerfull functions to your bash. 
 
-`utils.sh` is considered legasy.
-they can be "source"-ed directly or copied as your own script:
+`utils.sh` is considered legasy and shall be "source"-ed directly 
+while `utils2.sh` shall be copied as your own script:
  `cp $PEGASO_ROOT/lib/bash/utils2.lib.sh /dir/myownscript.sh`
+or you can "source" it in your own code after removing the demo and test code at the end.
 
 `utils2` provides:
 * log function support log level, colors, file descriptiors.
