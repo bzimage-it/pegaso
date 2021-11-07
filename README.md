@@ -37,10 +37,11 @@ pegaso provides different commands:
 and
 `$PEGASO_ROOT/lib/bash/utils2.lib.sh`
 
-provides powerfull functions to your bash. you can "source" them or
-add at the beginning of your script.
+provides powerfull functions to your bash. 
 
-`utils2.sh` is new version, while `utils.sh` is legasy.
+`utils.sh` is considered legasy.
+they can be "source"-ed directly or copied as your own script:
+ `cp $PEGASO_ROOT/lib/bash/utils2.lib.sh /dir/myownscript.sh`
 
 `utils2` provides:
 * log function support log level, colors, file descriptiors.
