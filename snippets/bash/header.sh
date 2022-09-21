@@ -24,3 +24,54 @@ PEGASO_PARENT_ROOT="$(dirname "$PEGASO_ROOT")"
 
 echo "$PEGASO_ROOT"
 echo "$PEGASO_PARENT_ROOT"
+
+
+# param2env translation in case of env-oriented command line:
+
+# env "$PEGASO_SCRIPT_FILE"
+declare -A PEGASO_VALID_ENV_PARAMS=( [tic]=string [tac]=int [afile]=file [adir]=dir )
+
+PEGASO_env_param_errors=0
+for PP in "$@"; do
+    var="${PP%=*}"
+    value="${PP#*=}"
+    # echo "VAR=$var VALUE=$value"
+    if [[ -v "PEGASO_VALID_ENV_PARAMS[${var}]" ]]; then
+	case "${PEGASO_VALID_ENV_PARAMS[${var}]}" in
+	    string)
+	    # no checks, any value is valid
+	    ;;
+	    int)
+		if [[ ! "$value" == ?(-)+([0-9]) ]] ; then
+		    echo "$var has invalid value $value shall be integer" >&2 
+		    let PEGASO_env_param_errors+=1		    
+		fi		
+		;;
+	    file)
+		if [ ! -f "$value" ]; then
+		    echo "$var hold unexisting filename: $value" >&2 
+		    let PEGASO_env_param_errors+=1	    
+		fi
+		;;
+	    dir)
+		if [ ! -d "$value" ]; then
+		    echo "$var hold unexisting dirname: $value" >&2 
+		    let PEGASO_env_param_errors+=1	    
+		fi
+		;;
+	    *)
+		echo "invalid type for ${PEGASO_VALID_ENV_PARAMS[${var}]} (script internal error)" >&2 
+		let PEGASO_env_param_errors+=1	    
+		;;
+	esac
+	eval "$PP"
+	# eval echo "PARAM SET: $var=\$$var"
+    else
+	echo "param $var unknown" >&2 
+	let PEGASO_env_param_errors+=1
+    fi
+done
+
+test $PEGASO_env_param_errors -gt 0 && exit 1
+
+
