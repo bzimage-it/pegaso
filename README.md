@@ -55,9 +55,17 @@ you can also execute a demo directly executing:
 
 # Other compoments and tools
 
-* ```PHP-crud``` is a simple PHP script to execute C-R-U-D operations on remote variable that can be used for remote configuration and settings.
-* ```user-net-access``` is a simple daemon to enable or disable internet access for some specific user list on a linux host. Can be used for simple parental control. Require ```PHP-crud``` to be available somewhere.
+## ```PHP-crud``` 
 
+a simple PHP script to execute C-R-U-D operations on remote variable that can be used for remote configuration and settings.
+
+## ```user-net-access``` 
+
+a simple daemon to enable or disable internet access for some specific user list on a linux host. Can be used for simple parental control. Require ```PHP-crud``` to be available somewhere.
+
+## ```c-expr```
+
+a c-based calculator and real-time expression evaluation; can be used like a command line calcultor or simple c-expressions evaluations; provides special macros and features to inspec and manipulates floating points; 
 
 
 

@@ -1,0 +1,95 @@
+USE OF C-EXPRESSIONS COMMAND LINE FACILITY
+Quick start
+
+
+=============================================
+0) REQUIREMENTS
+=============================================
+
+- Linux, gcc, python3; it could be possible also under cygwin (never tested)
+
+the command works likes a c-language interpreter, you pass to parameters
+C statement and expressions, they are compiled and executed each time.
+
+=============================================
+1) load
+=============================================
+# . c-expr.sh
+
+this will allow to use short alias as command "expr", as follow
+
+2) use it:
+
+# c-expr "double max=1.79769313486231571e+308" "double res = log2(2)*max" 
+
+=============================================
+3) remarks
+=============================================
+
+a) <stdio.h> and <math.h> are included by default, just use them!
+b) into c-expr.h you can add any definitions or extra include files, e.g:
+
+#define DBL_MAX 1.79769313486231571e+308
+#include "IEEE_754_types.h"
+
+c) IEEE_754_types.h contains extra powerfull definitions to manipulate
+   floating point doubles.
+
+   in particular: 
+   #define D(_name,_value)
+   define a complex double strucht named '_name' with double initial value of
+   _value.
+
+   #define DUMP(v)
+   print a full and detailed dump of the structure 'v' (needs to be declared
+   using 'D' above)
+
+   examples, make some computation using mathlib asin:
+
+   # c-expr 'D(x,1.000E-10*3939); D(y,asin(303)); D(a,0); DUMP(x); DUMP(y);' 
+
+   it will output:
+
+x |g 3.939e-07 3.939e-07 0x3e9a6f26854e28c5 |m 0.8260681728 e -21 | S=0 MANT=2936961003038917 0xa6f26854e28c5 EXP=1001 0x3e9
+y |g nan nan 0x7ff8000000000000 |m nan e 0 | S=0 MANT=2251799813685248 0x8000000000000 EXP=-1 0xffffffff
+
+	note that first 3 lines are DUMP, while last 3 lines are conseguence of parameters following '--';
+
+
+f) how to compute strict border values arount a double 'x':
+
+this computes the smallest double representation of all numbers greater then x
+or:
+the greater double representation of all numebers less then x 
+
+in order to do so nextafter() can be used. see https://pubs.opengroup.org/onlinepubs/009695399/functions/nextafter.html
+
+
+c-expr 'D(x,2.222); DUMP(x); D(prev,nextafter(x.value, x.value-1)); D(next, nextafter(x.value,x.value+1)); DUMP(prev); DUMP(next);' 
+x |g 2.222 2.222 0x4001c6a7ef9db22d |m 0.55549999999999999 e 2 | S=0 MANT=499899558638125 0x1c6a7ef9db22d EXP=-1024 0xfffffc00
+prev |g 2.222 2.2219999999999995 0x4001c6a7ef9db22c |m 0.55549999999999988 e 2 | S=0 MANT=499899558638124 0x1c6a7ef9db22c EXP=-1024 0xfffffc00
+next |g 2.222 2.2220000000000004 0x4001c6a7ef9db22e |m 0.5555000000000001 e 2 | S=0 MANT=499899558638126 0x1c6a7ef9db22e EXP=-1024 0xfffffc00
+
+=============================================
+3) Other commands 
+=============================================
+
+in addition to c-expr are available following shell commands:
+
+c-compare, compare two double bit-a-bit
+c-nextafter, compute nextafter()
+
+type commands with no arguments to have help and examples
+
+
+=============================================
+3) C function and macros
+=============================================
+
+around(double v,double delta, int n)
+	      print information "near" to "v" using "v+delta" as parameter
+	      "to" of the under function "nextafter()"
+	      "n" is the number of step before and after "v" shall be done
+
+
+

@@ -1,0 +1,6 @@
+#define DBL_MAX 1.79769313486231571e+308
+#define EPSILON 1e-10
+
+#define GMX_F_PI_4 0.7853984832763671875
+
+#include "IEEE_754_types.h"
