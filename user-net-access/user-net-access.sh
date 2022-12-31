@@ -64,8 +64,6 @@ function load_conf() {
 	log "using UNA_SLEEP_M=$UNA_SLEEP_M ($UNA_SLEEP secs)"
 	test -z "$UNA_USERS" && UNA_USERS=$USER
 	log "using UNA_USERS=$UNA_USERS"
-	test -z "$UNA_IF" && abort "undefined env UNA_IF"
-	log "using UNA_IF=$UNA_IF"
 
 	test -z "$UNA_CRUD_PWD"  && abort "undefined env UNA_CRUD_PWD"
 	test -z "$UNA_CRUD_URL"  && abort "undefined env UNA_CRUD_URL"
@@ -108,7 +106,7 @@ function action() {
 	    if [ -n "$ID" ]; then
 		log "already disabled, skipped"
 	    else
-		iptables -A OUTPUT -o "$UNA_IF" -m owner --uid-owner "$UNA_UID" -j DROP
+		iptables -A OUTPUT -m owner --uid-owner "$UNA_UID" -j DROP
 	    fi
 	    ;;
 	enable)
@@ -220,6 +218,10 @@ while true; do
 		case "${OUT}" in
 		    "DISABLED"|"DISABLE"|"N"|"NO")
 			action disable $UNA_USER
+			if [ -n "$UNA_ADDITIONAL_COMMAND_ON_DISABLE" ]; then
+			    log "ADDITIONAL CMD: $UNA_ADDITIONAL_COMMAND_ON_DISABLE ..."
+			    eval "$UNA_ADDITIONAL_COMMAND_ON_DISABLE"
+			fi
 			;;
 		    "ENABLED"|"ENABLE"|"Y"|"YES")
 			action enable $UNA_USER
