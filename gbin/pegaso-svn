@@ -16,6 +16,8 @@ PEGASO_SCRIPT_DIR="$( cd -P "$( dirname "$PEGASO_SOURCE" )" && pwd )"
 PEGASO_SCRIPT_FILE=$(basename "$PEGASO_SOURCE")
 # end of snipped
 
+orig="$(pwd)"
+
 cd "$PEGASO_SCRIPT_DIR"
 cd .. || exit 1
 export PEGASO_ROOT="$(pwd)"
@@ -28,18 +30,34 @@ function syntax() {
 	cat <<EOF
  $PEGASO_SCRIPT_FILE 
  
- remove-unversioned-all  | svn cleanup --remove-unversioned --remove-ignored
+ remove-unversioned-all    | svn cleanup --remove-unversioned --remove-ignored
+ checkout-smart <BASEREPO> | get trunk,tags,branch but only trunk as infinity
+ status-egrep <STATUS-LETTER-EGREP-FILTER> <optiona-status-args> 
+                           | filter 'status' output based on status letter 
 EOF
 }
 
 
 cmd="$1"
 shift
+cd "$orig" || exit 2
 
 case "$cmd" in
 	remove-unversioned-all)
-		svn cleanup --remove-unversioned --remove-ignored
-		;;
+	    svn cleanup --remove-unversioned --remove-ignored
+	    ;;
+	checkout-smart)
+	    svn co --depth immediates $*
+	    ;;
+	status-egrep)
+	    GREP_OPT="$1"
+	    if [ -z "$GREP_OPT" ]; then
+		    echo "missed option"
+		    syntax
+	    fi
+	    OTHER_OPS="$2"
+	    svn status $OTHER_OPS | egrep "$GREP_OPT" | awk -- '{print $2}'
+	    ;;	
 	*)
 		echo "unknown param $cmd"
 		syntax
