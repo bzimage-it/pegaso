@@ -31,7 +31,9 @@ function syntax() {
  $PEGASO_SCRIPT_FILE 
  
  remove-unversioned-all    | svn cleanup --remove-unversioned --remove-ignored
- checkout-smart <BASEREPO> | get trunk,tags,branch but only trunk as infinity
+ co-smart-1 <BASEREPO>     | get trunk,tags,branch but only trunk as infinity
+ co-smart-2                | update current dir with immediates (requires 'cd' before)
+ co-smart-3                | update a sub-dir with infinity (requires 'cd' before)
  status-egrep <STATUS-LETTER-EGREP-FILTER> <optiona-status-args> 
                            | filter 'status' output based on status letter 
 EOF
@@ -46,8 +48,14 @@ case "$cmd" in
 	remove-unversioned-all)
 	    svn cleanup --remove-unversioned --remove-ignored
 	    ;;
-	checkout-smart)
+	co-smart-1)
 	    svn co --depth immediates $*
+ 	    ;;
+	co-smart-2)
+	    svn update --set-depth immediates .
+ 	    ;;
+	co-smart-3)
+	    svn update --set-depth infinity .
 	    ;;
 	status-egrep)
 	    GREP_OPT="$1"
