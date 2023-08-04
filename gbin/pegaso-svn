@@ -30,15 +30,22 @@ function syntax() {
 	cat <<EOF
  $PEGASO_SCRIPT_FILE 
  
- remove-unversioned-all    | svn cleanup --remove-unversioned --remove-ignored
- co-smart-1 <BASEREPO>     | get trunk,tags,branch but only trunk as infinity
- co-smart-2                | update current dir with immediates (requires 'cd' before)
- co-smart-3                | update a sub-dir with infinity (requires 'cd' before)
- status-egrep <STATUS-LETTER-EGREP-FILTER> <optiona-status-args> 
-                           | filter 'status' output based on status letter 
+ remove-unversioned-all     | svn cleanup --remove-unversioned --remove-ignored
+ co-smart-1 <BASEREPO>      | get trunk,tags,branch but only trunk as infinity
+ co-smart-2                 | update current dir with immediates (requires 'cd' before)
+ co-smart-3                 | update a sub-dir with infinity (requires 'cd' before)
+ status-egrep <STATUS-LETTER-EGREP-FILTER> [<optional-svn-status-args> ...]
+                            | filter 'status' output based on egrep expression; to filter by svn status letter: '^M' '^C'...
+ interactive-commit-by-file | commit file-by-file and write different comment 
 EOF
 }
 
+
+function by_status_letter() {
+	local GREP_OPT="$1"
+	local OTHER_OPS="$2"
+	svn status $OTHER_OPS | egrep "$GREP_OPT" | awk -- '{print $2}'
+}
 
 cmd="$1"
 shift
@@ -64,8 +71,21 @@ case "$cmd" in
 		    syntax
 	    fi
 	    OTHER_OPS="$2"
-	    svn status $OTHER_OPS | egrep "$GREP_OPT" | awk -- '{print $2}'
+	    by_status_letter "$GREP_OPT" "$OTHER_OPS"
 	    ;;	
+	interactive-commit-by-file)
+	    t=$(mktemp)
+	    by_status_letter "^M" > $t
+	    n=$(cat $t | wc -l)
+	    while [ $n -gt 0 ] ; do
+	    	F=$(head -n $n $t | tail -n 1)
+	    	let n-=1
+	    	echo "===[$n]==| $F |====="
+	    	svn diff "$F"
+	    	read -p "SVN COMMENT (Ctrl+C to abort): " COMMENT
+		svn commit -m "$COMMENT" "$F" || exit 2
+	    done 
+	    ;;
 	*)
 		echo "unknown param $cmd"
 		syntax
