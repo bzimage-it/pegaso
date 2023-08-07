@@ -37,6 +37,7 @@ function syntax() {
  status-egrep <STATUS-LETTER-EGREP-FILTER> [<optional-svn-status-args> ...]
                             | filter 'status' output based on egrep expression; to filter by svn status letter: '^M' '^C'...
  interactive-commit-by-file | commit file-by-file and write different comment 
+ refinfo <FILE1> <FILE2> ...| print concise reference information grepped from "svn info"
 EOF
 }
 
@@ -73,6 +74,13 @@ case "$cmd" in
 	    OTHER_OPS="$2"
 	    by_status_letter "$GREP_OPT" "$OTHER_OPS"
 	    ;;	
+	refinfo)
+	    echo "!!!! REMEMBER TO RUN SVN UPDATE FIRST !!!!!!" 1>&2
+ 	    for F in "$@"; do
+ 	    	echo
+ 	    	svn info "$F" | egrep "^(Re(lative|vision)|Last)"
+ 	    done
+	    ;;
 	interactive-commit-by-file)
 	    t=$(mktemp)
 	    by_status_letter "^M" > $t
