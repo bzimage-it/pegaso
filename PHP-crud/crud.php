@@ -8,7 +8,7 @@ $internal = 500;
 $cmd_error = TRUE;
 $this_script="/crud/crud.php";
 define('CSSPATH', './'); //define css path
-$hname = $_SERVER['host_name'];
+$hname = $_SERVER['HTTP_HOST'];
 
 function abort($msg,$code) {
     /* http_response_code ();
