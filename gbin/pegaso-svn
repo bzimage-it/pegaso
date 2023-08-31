@@ -30,14 +30,18 @@ function syntax() {
 	cat <<EOF
  $PEGASO_SCRIPT_FILE 
  
- remove-unversioned-all     | svn cleanup --remove-unversioned --remove-ignored
- co-smart-1 <BASEREPO>      | get trunk,tags,branch but only trunk as infinity
- co-smart-2                 | update current dir with immediates (requires 'cd' before)
- co-smart-3                 | update a sub-dir with infinity (requires 'cd' before)
+ remove-unversioned-all        | svn cleanup --remove-unversioned --remove-ignored
+ co-smart-1 <BASEREPO>         | get trunk,tags,branch but only trunk as infinity
+ co-smart-2                    | update current dir with immediates (requires 'cd' before)
+ co-smart-3                    | update a sub-dir with infinity (requires 'cd' before)
  status-egrep <STATUS-LETTER-EGREP-FILTER> [<optional-svn-status-args> ...]
-                            | filter 'status' output based on egrep expression; to filter by svn status letter: '^M' '^C'...
- interactive-commit-by-file | commit file-by-file and write different comment 
- refinfo <FILE1> <FILE2> ...| print concise reference information grepped from "svn info"
+                               | filter 'status' output based on egrep expression; to filter by svn status letter: '^M' '^C'...
+ interactive-commit-by-file    | commit file-by-file and write different comment 
+ refinfo <FILE1> <FILE2> ...   | print concise reference information grepped from "svn info"
+ cat-history <FILE1> <FILE2>.. 
+     <optional-log-svn-option> | download and save many versions of a single from the history (via cat)
+                                 last options are any valid "svn log" option: tipical is -l <n> to
+                                 tune how many file to dowload
 EOF
 }
 
@@ -94,6 +98,49 @@ case "$cmd" in
 		svn commit -m "$COMMENT" "$F" || exit 2
 	    done 
 	    ;;
+	cat-history)
+		  i=0
+		  f=0
+		  declare -a file
+		  declare -a url
+		  stop=0
+		  for F in "$@"; do
+		  	# echo "--- $F"
+		  	if [ -f "$F" -a "$stop" == 0 ]; then
+		  		let f+=1
+			  	svn info "$F" > /dev/null
+			  	if [ $? == 0 ]; then
+				  	file[$i]="$F"
+				  	url[$i]="$(svn info "$F" | egrep "^URL:" | cut -f 2 -d ' ')"
+				  	echo "SVN FILE OK: ${file[$i]}"
+				  	let i+=1
+				else
+					echo "SVN INFO error, ignored: $F"
+				fi
+			else
+				stop=1
+			fi
+		  done
+		  # echo f=$f i=$i
+		  let i-=1
+		  shift $f
+		  echo "========================"
+		  echo "OPTIONS FOR svn log ARE: $*"
+		  if [ $i -ge 0 ]; then
+		  	  t=$(mktemp)
+			  for j in $(seq 0 $i) ; do
+			  	echo "SVN CAT: ${file[$j]}"
+			  	svn log $* "${file[$j]}" | egrep "^r" | tee $t 
+			  	cat $t | perl -ne '/^r(\w+)/o; print "$1\n";' | while read rev; do 
+			  		b="$(basename -- "${file[$j]}")"
+			  		extension="${b##*.}"
+					filename="${b%.*}"
+			  		svn cat "${url[$i]}@"$rev > "${filename}_r${rev}.${extension}"
+			  	done 
+			  done
+			  rm -f $t
+		  fi
+		;;
 	*)
 		echo "unknown param $cmd"
 		syntax
