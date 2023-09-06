@@ -94,7 +94,7 @@ case "$cmd" in
 	    	let n-=1
 	    	echo "===[$n]==| $F |====="
 	    	svn diff "$F"
-	    	read -p "SVN COMMENT (Ctrl+C to abort): " COMMENT
+	    	read -e -p "SVN COMMENT (Ctrl+C to abort): " COMMENT
 		svn commit -m "$COMMENT" "$F" || exit 2
 	    done 
 	    ;;
