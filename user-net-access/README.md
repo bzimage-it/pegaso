@@ -12,6 +12,12 @@ script need to be run using daemon service, for example ```systemd``` and
 
 ### Requirements
 
+* curl(1) and inotifywait(1) commands are required.
+  on Ubuntu you shall:
+  ```
+  apt install inotify-tools curl
+  ```
+  
 * a CRUD-php (see it) service (find it on PEGASO) shall be
   running on some remote url for example:
   ```https://example.com/crud/crud.php```
