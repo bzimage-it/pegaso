@@ -8,8 +8,46 @@ t_DIR=$HOME
 z_DEFAULT_FORMAT="tar.xz"
 z_DATE_PREFIX="%Y-%m-%d-%H%M"
 z_SEPARATOR="-"
+cd_NFIFO=20
+cd_FLOCKCMD="flock -x -w 5 200"
+cd_FLOCKPATH=/var/lock/.pegaso.cd.cache
+new_chr="_"
 now_FORMAT="%Y-%m-%d-%H%M"
 now_FORMAT_s="%Y-%m-%d-%H%M%S"
+t_PEGASO_CONF_DIR=$HOME/.pegaso
+
+
+function win2posix() {
+	local path="$1"
+	echo "$path" | sed 's/\\/\//g' | sed 's/://'
+}
+
+function fifo() {
+    local n="$1"
+    local f="$2"
+    if [[ $n == '-h' || $n == '--help' || -z $n || $# != 2 ]]; then
+	cat <<EOF
+read from stdin and add content to <filename>; limit total lines of <filename> to be last <n> inserted.
+
+  fifo <n> <filename>
+
+if <filename> will be created if does not exist.
+EOF
+	return 0
+    fi
+    if [[ ! -f $f ]]; then
+	cat > "$f"
+    else
+	cat >> "$f"
+    fi
+    local t=
+    t=$(cat "$f" | wc -l)
+    if [[ $t -gt $n ]]; then
+	let diff="$t-$n"
+	# echo "diff: $diff" >&2
+	sed -i -e "1,${diff} d" $f
+    fi
+}
 
 # a cool "cd" version that works also for files (go to file's dir)
 # and also accept -n option to go back of n steo '..', 
@@ -31,23 +69,99 @@ function cd() {
     local n=
     local i=
     local str=
+    local biret= # built in return
+    local toposix=
+    if [[ $1 == '-h' || $1 == '--help' ]]; then
+	cat <<EOF
+you are using che 'PEGASO' version of 'cd', a wrapper of the build-in cd that improve usage to fast change level and fast go to last used changed dir in the cache.
+
+  cd -NLEVEL
+  cd %[NFIFO]
+  cd <built-in-options>
+
+  NLEVEL number of up level (..) to change go.
+  NFIFO  number of line in saved cache to change to. use "cd %" to show the cache.
+example:
+
+
+  cd -3
+     go up one 3 level like  cd ../../..
+  cd %
+     show the full cash
+  cd %18
+     change directory to the 18th cached directory.
+  cd <build-in params...> 
+     execute build-in bash; if fails, do "fast" cd, see above.
+
+if option above are not recognized, the build-in bash cd command is called
+passing all left parameter. You can use 'buildin cd' command to force use
+of the original bash 'cd' command in your environment.
+
+Moreover: if the built-in cd command also fails, the parameter is 
+interpreted to be a <name> that is expected to be a symbolic link
+located into \$t_PEGASO_CONF_DIR/cd/<name> . If this symlink exists,
+the directory is changed to the one linked to. You can so easy install
+"fast" cd command, that is also independent of the current location, 
+by adding a simple symlink into \$t_PEGASO_CONF_DIR/cd/ directory.
+
+maximum number of cache is controlled by the environent 'cd_NFIFO',
+EOF
+	echo "current value is: $cd_NFIFO"
+	echo "current t_PEGASO_CONF_DIR=$t_PEGASO_CONF_DIR"
+	echo "builtin cd help is:"
+	builtin cd -h
+	return 0
+    fi
+    if [[ $d =~ %(([0-9]*)?) ]]; then             
+	    if [[ -z ${d:1} ]]; then	    
+		cat $HOME/.cd.saved | perl -ne '$i++; print sprintf("%2d $_",$i);'
+	    else
+		d=$(head -n ${d:1} $HOME/.cd.saved | tail -n 1)
+		# manage write lock on file:
+		builtin cd "$d" && ( $cd_FLOCKCMD; pwd | fifo $cd_NFIFO $HOME/.cd.saved) 200>$cd_FLOCKPATH 
+	fi
+	return 0
+    fi
     if [[ "$d" =~  ^-([0-9]+) ]]; then
    	n="${d:1}"
 	for i in $(seq 1 "$n"); do
    	    str+="../"
    	done
 	echo go back step $n: $str
-   	builtin cd "$str"
     else
 	test -z "$d" && d="$HOME"; 
-	if [ -f "$d" ]; then 
-	    d="$(dirname "$d")";
-	      builtin cd "$d"
+	if [ -d "$d" ]; then 
+	    str="$@"    
 	else
-	    builtin cd "$@"
+	    if [ -f "$d" ]; then
+		    d="$(dirname "$d")";
+		    str="$d"
+	    else
+	    	str="$d"
+	    fi
 	fi
-	
     fi 
+    # echo "trace: $str"
+    if test -n "$str"; then
+    	builtin cd "$str"
+    else
+    	builtin cd
+    fi
+    biret=$?
+    toposix="$(win2posix "$str")"
+    test $biret != 0 -a "$str" != "$toposix" && builtin cd "$toposix" && biret=$?
+    if [ $biret != 0  ] ; then
+    	str="$(readlink -f "$t_PEGASO_CONF_DIR/cd/$str")"
+    	echo fast cd to: $str
+    	builtin cd "$str"
+    	return $?
+    fi
+    return $biret
+}
+function mkcd() { 
+    # a combination of "mkdir -p" + "cd" shell command
+    local d="$1" ; 
+    mkdir -p "$d" && builtin cd "$d"
 }
 
 function now() {
@@ -70,6 +184,46 @@ EOF
 	FORMAT=$now_FORMAT_s
     fi
     date +$FORMAT
+}
+
+
+function rmspaces() {
+     if [[ $1 == '-h' || $1 == '--help' || $# == 0 ]]; then
+	cat <<- 'EOF'	
+ remove spaces from the file name or directory with a character defined in 'new_chr' environment.
+ default is underscore ("_").
+ directory path is never changed, only filename.
+ 
+ rmspace <filepath1> <filepath2>...
+ 
+ example:
+ 
+ # rmspace "my file with space.txt" "my file with more      spaces.txt" 
+   rename file to be "my_file_with_spaces.txt" and "my_file_with_more_spaces.txt" rispectively.
+ # new_chr='-' rmspace "my file with space.txt" 
+   rename the file "my file with space.txt" with  "my-file-with-space.txt" 
+ 
+EOF
+	echo " current 'new_chr' is: '$new_chr'"
+	return 0
+    fi
+    local F=
+    local B=
+    local D=
+    local NB=
+    while [ $# -ge 1 ]; do
+    	F="$1"
+    	shift
+    	if [ -e "$F" ]; then
+    		B="$(basename "$F")"
+    		D="$(dirname "$F")"
+    		NB=$(echo "$B" | tr " " "$new_chr")
+    		(cd "$D" && mv "$B" "$NB")
+    	else
+    		echo "$F not a file or directory"
+    	fi
+    done
+    
 }
 
 declare -A __h_ids
@@ -158,6 +312,7 @@ EOF
     return 0
 }
 
+alias tlast='t 1 +'
 
 
 function z() {
@@ -183,7 +338,7 @@ function z() {
      z -h | --help
 
   compressed generated format depends on format specified and will be stored
-  in t_DIR too with a name prefixed of $t_DATE_PREFIX and postfix 
+  in t_DIR too with a name prefixed of $z_DATE_PREFIX and postfix 
   given in POSTFIX.
 
      FORMAT    : choosed output compressed format. Following are supported:
@@ -195,14 +350,14 @@ function z() {
                  instead of \n. Suitable to be used in conjuntion with 
                  xargs -0 or to fix space issue and quotations. 
                  ignored on "no sign" mode. 
-                 example: "t 4 + -0 | xargs -0 rm -v"
+                 example: "t 4 1 2 3 - -0 | z tar.gz -0"
      (parameters above can be given in any order)
      -h,--help : show this help and exit
 
      Setting t_DIR=$HOME is strongly suggested.
 EOF
 	echo "     current t_DIR environment is: $t_DIR"
-	echo "     current t_DATE_FORMAT is    : $t_DATE_FORMAT"
+	echo "     current z_DATE_PREFIX is: $z_DATE_PREFIX"
 	return 1
     fi    
     while [ $# -ge 1 ]; do
@@ -278,3 +433,84 @@ EOF
     return $?
 }
 
+
+function save() {
+    local TAG=""
+    local NOW=$(date +$z_DATE_PREFIX)
+    local FORMAT=
+    local M0=
+    local POSTFIX=
+    if [[ $1 == '-h' || $1 == '--help' || $# -gt 3 ]]; then
+	cat <<- 'EOF'
+  Save the standard input in file in t_DIR directory with a 
+  standard or a given name.
+ 
+  <params> are the same of t
+
+     save <params...>
+     save -h | --help
+
+     if filename is not given , use "saved-<z_DATE_PREFIX>.tmp' template
+     -h,--help : show this help and exit
+
+     Setting t_DIR=$HOME is strongly suggested.
+EOF
+	echo "     current t_DIR environment is: $t_DIR"
+	return 1
+    fi
+    local FILENAME=
+    local ret=0
+    FILENAME="$1"
+    test -z "$FILENAME" && FILENAME="${t_DIR}/saved-${NOW}.tmp"
+    cat > $FILENAME
+    ret=$?
+    echo >&2 "written $FILENAME"
+    return $ret
+}
+
+function saved() {
+    if [[ $1 == '-h' || $1 == '--help' ]]; then
+	cat <<- 'EOF'
+  'cat' print to stdout of the <id> file in the stack list, as used in t command (see). 
+   Default id is 1. Used in conjuntion with save command. 
+
+     saved [<id>]
+     saved -h | --help
+
+     -h,--help : show this help and exit
+
+     Setting t_DIR=$HOME is strongly suggested.
+
+EOF
+	echo "     current t_DIR environment is: $t_DIR"
+	return 1
+    fi
+    if [ $# == 0 ]; then
+	t 1 1 + -0 | xargs -L 1 -0 cat
+    else
+	t $* + -0 | xargs -L 1 -0 cat
+    fi
+    ret=$?
+    return $ret
+}
+
+function te() {
+    if [[ $1 == '-h' || $1 == '--help' ]]; then
+	cat <<- 'EOF'
+  execute an arbitraty command from the t_DIR directory
+
+     te <command> [param1 [param2 ...]]
+     te -h | --help
+
+     -h,--help : show this help and exit
+
+     Setting t_DIR=$HOME is strongly suggested.
+EOF
+	echo "     current t_DIR environment is: $t_DIR"
+	return 1
+    fi    
+    (cd $t_DIR &&
+	 $* )
+    ret=$?
+    return $ret
+}
