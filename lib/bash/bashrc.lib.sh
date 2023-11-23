@@ -187,14 +187,24 @@ EOF
 }
 
 
+function prv_rmspaces() {
+	local f="$1"
+	local B="$(basename "$F")"
+    	local D="$(dirname "$F")"
+    	local NB=$(echo "$B" | tr " " "$new_chr")
+    	(cd "$D" && mv "$B" "$NB")
+    	return $?
+}
+
 function rmspaces() {
-     if [[ $1 == '-h' || $1 == '--help' || $# == 0 ]]; then
+     if [[ "$1" == '-h' || "$1" == '--help' ]]; then
 	cat <<- 'EOF'	
  remove spaces from the file name or directory with a character defined in 'new_chr' environment.
  default is underscore ("_").
  directory path is never changed, only filename.
+ with no parameters, standard input is read as the list of file paths, one for each line.
  
- rmspace <filepath1> <filepath2>...
+ rmspace [[<filepath1> [<filepath2> ]]...
  
  example:
  
@@ -202,6 +212,8 @@ function rmspaces() {
    rename file to be "my_file_with_spaces.txt" and "my_file_with_more_spaces.txt" rispectively.
  # new_chr='-' rmspace "my file with space.txt" 
    rename the file "my file with space.txt" with  "my-file-with-space.txt" 
+ # ls -1 myprefix* | xargs -L 1 | new_chr='-' rmspaces
+   remove spaces to all files starting with "myprefix" using "-" replacement
  
 EOF
 	echo " current 'new_chr' is: '$new_chr'"
@@ -211,19 +223,21 @@ EOF
     local B=
     local D=
     local NB=
+    if [ $# == 0 ]; then
+    	while read F; do
+    		prv_rmspaces "$F"
+    	done
+    	return 0
+    fi
     while [ $# -ge 1 ]; do
     	F="$1"
     	shift
     	if [ -e "$F" ]; then
-    		B="$(basename "$F")"
-    		D="$(dirname "$F")"
-    		NB=$(echo "$B" | tr " " "$new_chr")
-    		(cd "$D" && mv "$B" "$NB")
+    		prv_rmspaces "$F"
     	else
     		echo "$F not a file or directory"
     	fi
     done
-    
 }
 
 declare -A __h_ids
