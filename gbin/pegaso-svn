@@ -34,6 +34,7 @@ function syntax() {
  co-smart-1 <BASEREPO>         | get trunk,tags,branch but only trunk as infinity
  co-smart-2                    | update current dir with immediates (requires 'cd' before)
  co-smart-3                    | update a sub-dir with infinity (requires 'cd' before)
+ co-smart <BASEREPO>           | execute co-smart-1 and iterate {co-smart-2 co-smart-3} for interactive single path
  status-egrep <STATUS-LETTER-EGREP-FILTER> [<optional-svn-status-args> ...]
                                | filter 'status' output based on egrep expression; to filter by svn status letter: '^M' '^C'...
  interactive-commit-by-file    | commit file-by-file and write different comment 
@@ -68,6 +69,31 @@ case "$cmd" in
  	    ;;
 	co-smart-3)
 	    svn update --set-depth infinity .
+	    ;;
+	co-smart)
+	    svn co --depth immediates $*
+	    while read -p "iterate subpath: > " SPATH; do
+	    	cd $SPATH
+	    	if [ $? == 0 ]; then
+	    		echo "[svn list]"
+	    		svn list
+	    		echo "[end svn list]"
+	    		echo
+	    		echo "pwd: "$(pwd)
+	    		read -p "go inside dir ("." to get them all as immediates; "!" to get infinity pwd): >" GO
+	    		if [ "$GO" = "!" ]; then
+	    			 svn update --set-depth infinity .
+	    			 break; # exit while iteration
+	    		else
+		    		svn update --set-depth immediates $GO
+		    	fi
+	    	else
+	    		ls -l
+	    	fi
+	    done
+	    ls -l
+	    echo "you may want to cd into:"
+	    pwd
 	    ;;
 	status-egrep)
 	    GREP_OPT="$1"
