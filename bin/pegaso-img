@@ -37,27 +37,47 @@ case "$CMD" in
     	shift
 	convert  "$@" +append "$dest"
 	;;
-    beside-oriz)
+    beside-oriz|beside-vert)
+    	case  "$CMD" in
+	  beside-oriz)
+	  	p_format="%h"
+	  	;;	  
+	  beside-vert)
+	  	p_format="%w"
+	  	;;
+    	esac
     	test $# -le 1 && syntax "error params"
     	targetf="$1"
     	shift
     	for F in $* ; do
-    		identify -format "$F : %h\n" "$F" 
+    		identify -format "$F : $p_format\n" "$F" 
     	done
     	echo "choose a reference file: "
     	select F in $* ; do
     		echo $F
     		break;
     	done
-    	H="$(identify -format "%h" "$F")"
+    	H="$(identify -format "$p_format" "$F")"
     	echo "reference is $F: $H pixels"
     	ALL=""
     	TO_REMOVE=""
+    	case  "$CMD" in
+	  beside-oriz)
+	  	p_resize="x$H"
+	  	p_crop="${H}x+0+0"
+	  	p_append="+append"
+	  	;;	  
+	  beside-vert)
+	  	p_resize="${H}x"
+	  	p_crop="x${H}+0+0"
+	  	p_append="-append"
+	  	;;
+    	esac
 	for F2 in $* ; do
 		echo -n "Process $F2 "
 		if [ "$F2" != "$F" ]; then
 			tmp="${F2}_${H}.tmp"
-			convert "$F2" -resize $H -gravity center -crop ${H}x+0+0 +repage "$tmp"
+			convert "$F2" -resize $p_resize -gravity center -crop $p_crop +repage "$tmp"
 			echo "[$tmp]"
 			ALL+=" $tmp"
 			TO_REMOVE+=" $tmp"
@@ -66,7 +86,7 @@ case "$CMD" in
 			ALL+=" $F2"
 		fi
 	done
-	convert +append $ALL $targetf	
+	convert $p_append $ALL $targetf
 	echo merged: $targetf
 	rm -fv $TO_REMOVE
 	;;
