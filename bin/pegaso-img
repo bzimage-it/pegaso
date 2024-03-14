@@ -1,0 +1,78 @@
+#!/bin/bash
+
+PEGASO_START_SCRIPT_PWD=$(pwd)
+
+# this is a code snipped:
+# from http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in
+# to understand what directory it's stored in bash script itself
+
+PEGASO_SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$PEGASO_SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+  PEGASO_DIR="$( cd -P "$( dirname "$PEGASO_SOURCE" )" && pwd )"
+  PEGASO_SOURCE="$(readlink "$PEGASO_SOURCE")"
+  [[ $PEGASO_SOURCE != /* ]] && PEGASO_SOURCE="$PEGASO_DIR/$PEGASO_SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+done
+PEGASO_SCRIPT_DIR="$( cd -P "$( dirname "$PEGASO_SOURCE" )" && pwd )"
+PEGASO_SCRIPT_FILE=$(basename "$PEGASO_SOURCE")
+# end of snipped
+
+CMD="$1"
+shift
+
+function syntax() {
+	local msg="$1"
+	test -n "$msg" && echo "$msg" && echo
+	cat <<EOF 
+ sintax: ${PEGASO_SCRIPT_FILE} beside      <destination-file> <filename1> <filename2> ..
+         ${PEGASO_SCRIPT_FILE} beside-oriz <destination-file> <filename1> <filename2> ..
+EOF
+	exit 1
+}
+
+
+case "$CMD" in
+    beside)
+    	test $# -le 1 && syntax "error params"
+    	dest="$1"
+    	shift
+	convert  "$@" +append "$dest"
+	;;
+    beside-oriz)
+    	test $# -le 1 && syntax "error params"
+    	targetf="$1"
+    	shift
+    	for F in $* ; do
+    		identify -format "$F : %h\n" "$F" 
+    	done
+    	echo "choose a reference file: "
+    	select F in $* ; do
+    		echo $F
+    		break;
+    	done
+    	H="$(identify -format "%h" "$F")"
+    	echo "reference is $F: $H pixels"
+    	ALL=""
+    	TO_REMOVE=""
+	for F2 in $* ; do
+		echo -n "Process $F2 "
+		if [ "$F2" != "$F" ]; then
+			tmp="${F2}_${H}.tmp"
+			convert "$F2" -resize $H -gravity center -crop ${H}x+0+0 +repage "$tmp"
+			echo "[$tmp]"
+			ALL+=" $tmp"
+			TO_REMOVE+=" $tmp"
+		else
+			echo "[skip]"
+			ALL+=" $F2"
+		fi
+	done
+	convert +append $ALL $targetf	
+	echo merged: $targetf
+	rm -fv $TO_REMOVE
+	;;
+    *)
+	echo "unknown command: $CMD"
+	syntax
+	;;
+esac
+
