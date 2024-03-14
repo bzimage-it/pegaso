@@ -23,20 +23,13 @@ function syntax() {
 	local msg="$1"
 	test -n "$msg" && echo "$msg" && echo
 	cat <<EOF 
- sintax: ${PEGASO_SCRIPT_FILE} beside      <destination-file> <filename1> <filename2> ..
-         ${PEGASO_SCRIPT_FILE} beside-oriz <destination-file> <filename1> <filename2> ..
+ sintax: ${PEGASO_SCRIPT_FILE} beside-oriz|beside-vert <destination-file> <filename1> <filename2> ..
 EOF
 	exit 1
 }
 
 
 case "$CMD" in
-    beside)
-    	test $# -le 1 && syntax "error params"
-    	dest="$1"
-    	shift
-	convert  "$@" +append "$dest"
-	;;
     beside-oriz|beside-vert)
     	case  "$CMD" in
 	  beside-oriz)
