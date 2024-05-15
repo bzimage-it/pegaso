@@ -1,0 +1,47 @@
+#!/usr/bin/perl 
+
+use strict;
+use warnings;
+use File::Basename;
+
+$SIG{__DIE__} = sub {
+	my $msg=shift;
+	# my ($package, $filename, $line) = caller;
+	my $filename = basename($0);
+	print STDERR <<EOF;
+	
+  $filename cut-regex <input-separator-regex> [[<output-separator-string>] [pos1 [pos2 ...]]
+  
+  <input-separator-regex>   : perl regex for input column separator; see man perlre(5)"
+  <output-separator-string> : string for output columns separator; default space ' '
+  pos1 pos2 ...             : integer position of columns number to print out; starts from 1
+                              if no positions are given, all columns are printed out.
+                              
+  Error: $msg
+EOF
+	exit(1);
+};
+
+die "no command given" if(@ARGV == 0);
+my $mode = shift;
+
+if($mode eq 'cut-regex') {
+	die "missed params" if (scalar(@ARGV) == 0);
+	my $regex = shift;
+	my $newsep = shift || " ";
+	my @pos = @ARGV;
+	if ( grep { $_ eq '0' } @pos ) {
+		die "0 is not a valid position for posN param";
+	}
+	while(<STDIN>) {
+		chomp;
+		my @parts = split(/$regex/);
+		my $idx = scalar(@pos) == 0 ? [1..scalar(@parts)] : \@pos;
+		print STDOUT join($newsep, map { $parts[$_-1] } @{$idx} )."\n";
+	}
+}elsif ( $mode eq '....') {
+	
+}else{
+	die "invalid mode param";
+}
+
