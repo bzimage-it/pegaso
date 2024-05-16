@@ -10,11 +10,22 @@ $SIG{__DIE__} = sub {
 	my $filename = basename($0);
 	print STDERR <<EOF;
 	
-  $filename cut-regex <input-separator-regex> [[<output-separator-string>] [pos1 [pos2 ...]]
-  
-  <input-separator-regex>   : perl regex for input column separator; see man perlre(5)"
+  $filename regex-cut    <input-separator-regex> [[<output-separator-string>] [pos1 [pos2 ...]]
+            print columns of a given positions
+  $filename regex-printf <input-separator-regex> <printf-format> [pos1 [pos2 ...]]
+            print columns with a specific format like printf which positional arguments
+            are given by pos1, pos2 ... ; if no posN is given
+  $filename cat          [ <any> ... ]
+            simply write back all standard input, used for fake usage or test cases; 
+            all parameters are ignored
+            
+  <input-separator-regex>   : perl regex for input column separator; see 'man perlre(5)'
   <output-separator-string> : string for output columns separator; default space ' '
+  <printf-format>           : printf format specificaiton with special tags %1, %2 ... inside
+                              substituted with column 1, 2 ... ; other %X are compliant to
+                              perl 'printf' format. see 'man perlfunc(5)'
   pos1 pos2 ...             : integer position of columns number to print out; starts from 1
+                              negative numbers indicates last colums: -1 last, -2 second-last ...
                               if no positions are given, all columns are printed out.
                               
   Error: $msg
@@ -25,23 +36,64 @@ EOF
 die "no command given" if(@ARGV == 0);
 my $mode = shift;
 
-if($mode eq 'cut-regex') {
+my $mode_cat = 1;
+my $mode_regex_printf=2;
+my $mode_regex_cut = 3;
+
+my $mode2int = {
+	'regex-cut'    => $mode_regex_cut,
+	'regex-printf' =>  $mode_regex_printf,
+	'cat'          =>  $mode_cat,
+};
+
+unless(exists($mode2int->{$mode})) { 
+	die "invalid mode param";
+}
+my $modeint = $mode2int->{$mode};
+
+if($modeint == $mode_regex_cut or $modeint == $mode_regex_printf) {
 	die "missed params" if (scalar(@ARGV) == 0);
 	my $regex = shift;
-	my $newsep = shift || " ";
+	my $newsep ;
+	if($modeint == $mode_regex_cut) {
+		$newsep = shift || " ";
+	}
+	my $format ;
+	if($modeint == $mode_regex_printf) {
+		die "missed params" if (scalar(@ARGV) == 0);
+		$format = shift;
+	}
+	# remaining arguments:
 	my @pos = @ARGV;
 	if ( grep { $_ eq '0' } @pos ) {
 		die "0 is not a valid position for posN param";
 	}
+	# get input:
 	while(<STDIN>) {
 		chomp;
+		# split input by given regex:
 		my @parts = split(/$regex/);
+		# if no position are given at command line, print all columns, otherwice use those ones.
 		my $idx = scalar(@pos) == 0 ? [1..scalar(@parts)] : \@pos;
-		print STDOUT join($newsep, map { $parts[$_-1] } @{$idx} )."\n";
+		# now $idx contains all indices to really use. perl's array indexing criteria do the rest. 
+		# note that the expression "$_<0 ? $_ : $_-1" makes both positive and negative values
+		# to work as expected.
+		my @values = map { $parts[$_<0 ? $_ : $_-1] } @{$idx} ;
+		if($modeint == $mode_regex_cut) {
+			print STDOUT join($newsep, @values)."\n";
+		}elsif($modeint == $mode_regex_printf) {
+			printf(STDOUT $format."\n",@values);
+		}else{
+			die "internal error modeint 1: $modeint";
+		}
+		
+	}	
+}elsif ( $mode eq 'cat') {
+	while(<STDIN>) {
+		print STDOUT;
 	}
-}elsif ( $mode eq '....') {
-	
 }else{
-	die "invalid mode param";
+	die "internal error modeint 2: $modeint";
 }
+
 
