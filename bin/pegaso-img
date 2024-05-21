@@ -1,0 +1,42 @@
+#!/bin/bash
+
+PEGASO_START_SCRIPT_PWD=$(pwd)
+
+# this is a code snipped:
+# from http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in
+# to understand what directory it's stored in bash script itself
+
+PEGASO_SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$PEGASO_SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+  PEGASO_DIR="$( cd -P "$( dirname "$PEGASO_SOURCE" )" && pwd )"
+  PEGASO_SOURCE="$(readlink "$PEGASO_SOURCE")"
+  [[ $PEGASO_SOURCE != /* ]] && PEGASO_SOURCE="$PEGASO_DIR/$PEGASO_SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+done
+PEGASO_SCRIPT_DIR="$( cd -P "$( dirname "$PEGASO_SOURCE" )" && pwd )"
+PEGASO_SCRIPT_FILE=$(basename "$PEGASO_SOURCE")
+# end of snipped
+
+CMD="$1"
+shift
+
+function syntax() {
+	local msg="$1"
+	test -n "$msg" && echo "$msg" && echo
+	echo "sintax: ${PEGASO_SCRIPT_FILE} beside <destination-file> <filename1> <filename2> .."
+	exit 1
+}
+
+
+case "$CMD" in
+    beside)
+    	test $# -le 1 && syntax "error params"
+    	dest="$1"
+    	shift
+	convert  "$@" +append "$dest"
+	;;
+    *)
+	echo "unknown command: $CMD"
+	syntax
+	;;
+esac
+
