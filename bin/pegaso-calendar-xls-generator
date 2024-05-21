@@ -1,0 +1,56 @@
+#!/usr/bin/perl
+# my own calendar generator
+
+use Date::Calc qw(:all);
+use Spreadsheet::WriteExcel;
+use Date::Calendar::Profiles qw( $Profiles );
+use Date::Calendar; 
+use Data::Dumper;
+
+my $year = shift || die "no year in param";
+
+$lang = Decode_Language("Italiano");
+$calendar  = Date::Calendar->new( $Profiles->{'IT'} );
+
+# Create a new Excel workbook
+my $workbook = Spreadsheet::WriteExcel->new("calendar-$year.xls");
+
+$format_workday = $workbook->add_format(); # Add a format
+$format_workday->set_color('black');
+$format_workday->set_align('center');
+$format_workday->set_align('top');
+
+$format_freeday = $workbook->add_format(); # Add a format
+$format_freeday->set_bold();
+$format_freeday->set_color('red');
+$format_freeday->set_align('center');
+$format_freeday->set_align('top');
+
+# Add a worksheet
+foreach my $m (1..12) {
+    $worksheet = $workbook->add_worksheet(substr(Month_to_Text($m,$lang),0,3));
+    my $days_in_m = Days_in_Month($year,$m);
+    my $max_len = 0;
+    foreach my $d (1..$days_in_m) {
+	my $tags = $calendar->tags($year,$m,$d);
+	my @tags = defined($tags) ? keys(%{$tags}) : ();
+	foreach my $l (map { length($_) } @tags) { $max_len=$l if($l > $max_len) };	
+	my $dow = Day_of_Week($year,$m,$d);
+	my $dowa = Day_of_Week_Abbreviation($dow,$lang);	
+	my $format = $calendar->is_full($year,$m,$d) ?
+	    $format_freeday : $format_workday;
+	$worksheet->write($d-1, 0, $d,   $format);
+	$worksheet->write($d-1, 1, substr($dowa,0,3) , $format);
+	if(@tags> 0) {
+	    $worksheet->write($d-1, 2, join(" ->\n",@tags), $format);
+	     # print "$year-$m-$d: ".Dumper($tags);
+	}
+
+    }
+    # print "set_column $m $max_len\n";
+    $worksheet->set_column(2,2, int($max_len * 1.2 ));    
+}
+
+$workbook->close();
+
+
