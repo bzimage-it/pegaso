@@ -146,7 +146,7 @@ if filemode != 3:
             input_str[n]+=separator
 
 def myreduce(x):
-    s = re.sub('[\s\n]+','',  re.sub(separator+'+',separator,x))
+    s = re.sub(r'[\s\n]+','',  re.sub(separator+'+',separator,x))
     return list(filter (lambda x:x!=''  ,s.split(separator)))
 
 # snippet from:
