@@ -43,6 +43,8 @@ function syntax() {
      <optional-log-svn-option> | download and save many versions of a single from the history (via cat)
                                  last options are any valid "svn log" option: tipical is -l <n> to
                                  tune how many file to dowload
+                                 
+if PEGASO_SVN_ROOT environment is set, it will be prefixed 'as is' to <BASEREPO>.
 EOF
 }
 
@@ -53,16 +55,30 @@ function by_status_letter() {
 	svn status $OTHER_OPS | egrep "$GREP_OPT" | awk -- '{print $2}'
 }
 
+
+function svn_co() {
+ 	local BASEREPO="$1"
+	shift
+	if [ -n "$PEGASO_SVN_ROOT" ]; then
+		echo "using PEGASO_SVN_ROOT=$PEGASO_SVN_ROOT"
+	    	BASEREPO="${PEGASO_SVN_ROOT}$BASEREPO"
+    	    	echo "      BASEREPO       =$BASEREPO"
+	fi
+	svn co --depth immediates "$BASEREPO" $*
+}
+
 cmd="$1"
 shift
 cd "$orig" || exit 2
+
+
 
 case "$cmd" in
 	remove-unversioned-all)
 	    svn cleanup --remove-unversioned --remove-ignored
 	    ;;
 	co-smart-1)
-	    svn co --depth immediates $*
+	    svn_co $*
  	    ;;
 	co-smart-2)
 	    svn update --set-depth immediates .
@@ -71,7 +87,7 @@ case "$cmd" in
 	    svn update --set-depth infinity .
 	    ;;
 	co-smart)
-	    svn co --depth immediates $*
+	    svn_co $*
 	    while read -p "iterate subpath: > " SPATH; do
 	    	cd $SPATH
 	    	if [ $? == 0 ]; then
