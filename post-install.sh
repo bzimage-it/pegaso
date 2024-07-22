@@ -18,8 +18,6 @@ PEGASO_SCRIPT_FILE=$(basename "$PEGASO_SOURCE")
 
 cd "$PEGASO_SCRIPT_DIR"
 export PEGASO_ROOT="$(pwd)"
-rm -rf bin
-cp -a gbin bin || exit 1
 cd bin && chmod -v 755 *
 
 
