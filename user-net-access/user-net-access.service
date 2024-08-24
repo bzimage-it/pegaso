@@ -2,7 +2,7 @@
 Description=NETWORK per-user network ENABLE/DISABLE Daemon
 
 After=network.target
-Require=network.target
+Requires=network.target
 
 StartLimitIntervalSec=1
 
