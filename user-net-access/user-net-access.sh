@@ -97,7 +97,9 @@ function read_traffic() {
 function action() {
     local CMD="$1"
     local USERNAME="$2"
-    local UNA_UID="$(id -u "$USERNAME")"
+    local UNA_UID=
+    UNA_UID="$(id -u "$USERNAME")"
+    test $? != 0 && log "error getting id info for USERNAME:$USERNAME, action aborted" && return 1
     local traffic_chain="${UNA_IPTABLES_USER_CHAIN_PREFIX}${USERNAME}"
     log "action: $CMD on user $USERNAME (uid=$UNA_UID) ..."
     case "$CMD" in
@@ -262,6 +264,12 @@ while true; do
 		;;
 	    *)
 		log "read | username=$UNA_USER http response: $CODE"
+		if [ -n "$UNA_ERROR_COMMAND" ] ; then
+			log "execute \${UNA_ERROR_COMMAND}: $UNA_ERROR_COMMAND"
+			eval "$UNA_ERROR_COMMAND"
+		else
+			log "no \${UNA_ERROR_COMMAND} defined"
+		fi
 		;;
 	esac
     done
