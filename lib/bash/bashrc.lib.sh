@@ -78,6 +78,7 @@ you are using che 'PEGASO' version of 'cd', a wrapper of the build-in cd that im
   cd -NLEVEL
   cd %[NFIFO]
   cd <built-in-options>
+  cd ?
 
   NLEVEL number of up level (..) to change go.
   NFIFO  number of line in saved cache to change to. use "cd %" to show the cache.
@@ -92,6 +93,8 @@ example:
      change directory to the 18th cached directory.
   cd <build-in params...> 
      execute build-in bash; if fails, do "fast" cd, see above.
+  cd ?
+     show available directories for "fast" cd.
 
 if option above are not recognized, the build-in bash cd command is called
 passing all left parameter. You can use 'buildin cd' command to force use
@@ -110,6 +113,10 @@ EOF
 	echo "current t_PEGASO_CONF_DIR=$t_PEGASO_CONF_DIR"
 	echo "builtin cd help is:"
 	builtin cd -h
+	return 0
+    fi
+    if [[ $d == '?' ]]; then
+	ls $t_PEGASO_CONF_DIR/cd
 	return 0
     fi
     if [[ $d =~ %(([0-9]*)?) ]]; then             
