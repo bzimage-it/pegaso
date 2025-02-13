@@ -1,0 +1,84 @@
+#!/bin/bash
+
+PEGASO_START_SCRIPT_PWD=$(pwd)
+
+# this is a code snipped:
+# from http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in
+# to understand what directory it's stored in bash script itself
+
+PEGASO_SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$PEGASO_SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+  PEGASO_DIR="$( cd -P "$( dirname "$PEGASO_SOURCE" )" && pwd )"
+  PEGASO_SOURCE="$(readlink "$PEGASO_SOURCE")"
+  [[ $PEGASO_SOURCE != /* ]] && PEGASO_SOURCE="$PEGASO_DIR/$PEGASO_SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+done
+PEGASO_SCRIPT_DIR="$( cd -P "$( dirname "$PEGASO_SOURCE" )" && pwd )"
+PEGASO_SCRIPT_FILE=$(basename "$PEGASO_SOURCE")
+# end of snipped
+
+function syntax() {
+	local msg="$1"
+	test -n "$msg" && echo "$msg" && echo
+	echo "sintax: ${PEGASO_SCRIPT_FILE} <file>"
+	exit 1
+}
+
+
+test $# != 1 && syntax && exit 1
+
+file="$1"
+
+test ! -f "$file" && echo "error: not exists $file" >&2 && exit 2
+
+full="$(readlink -f "$file")"
+mime="$(file --mime-type "$file" | cut -d : -f 2 | tr -d ' ')"
+
+if [[ $file =~ tar\.gz$ || $file =~ \.tgz$ ]]; then
+    mime="special"
+    special=z
+fi
+
+if [[ $file =~ tar\.xz$ || $file =~ \.txz$ ]]; then
+    mime="special"
+    special=J
+fi
+
+if [[ $file =~ tar\.bz2$ || $file =~ \.tb2$ ]]; then
+    mime="special"
+    special=j
+fi
+  
+sign="$(stat "$file" | md5sum | cut -d ' ' -f 1)"
+signstart="$(expr substr $sign 1 6)"
+echo $file : $mime : $sign : $signstart
+base="$(basename "$file")"
+tdir=$HOME/$PEGASO_SCRIPT_FILE/$base-$signstart
+test -d "$tdir" &&
+    echo "directory already exists, no extraction : $tdir - open..." >&2 &&
+    echo "remove it first to force extraction:" >&2 &&
+    echo "rm -rf $tdir" >&2 &&
+    open "$tdir" &&
+    exit $?
+
+mkdir -p "$tdir" && cd "$tdir"
+set +x
+case "$mime" in
+    "special")
+	tar xfv$special $full
+	;;
+    "application/gzip")
+	# remove final .gz and preserve all before:
+	gunzip -c $full > "${base%.*}"
+	;;
+    "application/zip")
+	# remove final .gz and preserve all before:
+	unzip $full
+	;;
+    
+    *)
+	echo "unknown mime type: $mime" >&2
+	exit 3
+	;;
+    
+esac
+open "$tdir"
