@@ -56,7 +56,7 @@ tdir=$HOME/$PEGASO_SCRIPT_FILE/$base-$signstart
 test -d "$tdir" &&
     echo "directory already exists, no extraction : $tdir - open..." >&2 &&
     echo "remove it first to force extraction:" >&2 &&
-    echo "rm -rf $tdir" >&2 &&
+    echo "rm -rf \"$tdir\"" >&2 &&
     open "$tdir" &&
     exit $?
 
@@ -64,15 +64,15 @@ mkdir -p "$tdir" && cd "$tdir"
 set +x
 case "$mime" in
     "special")
-	tar xfv$special $full
+	tar xfv$special "$full"
 	;;
     "application/gzip")
 	# remove final .gz and preserve all before:
-	gunzip -c $full > "${base%.*}"
+	gunzip -c "$full" > "${base%.*}"
 	;;
     "application/zip")
 	# remove final .gz and preserve all before:
-	unzip $full
+	unzip "$full"
 	;;
     
     *)
