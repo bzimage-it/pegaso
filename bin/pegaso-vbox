@@ -1,0 +1,174 @@
+#!/bin/bash
+
+ACTION="$1"
+INPUT_OVA="$2"
+NEW_NAME="$3"
+OUTPUT_OVA="$4"
+
+
+if [ -z "$ACTION" ] || [ "$ACTION" != "ova-view" -a "$ACTION" != "ova-rename" -a "$ACTION" != "interact" ]; then
+  echo "Uso:"
+  echo "  $0 ova-view <file.ova>"
+  echo "  $0 ova-rename <file.ova> <nuovo_nome_vm> <nuovo_file.ova>"
+  echo "  $0 interact"
+  exit 1
+fi
+
+# === COMANDO INTERACT ===
+if [ "$ACTION" = "interact" ]; then
+  echo "LIST VMS:"
+  VBoxManage list vms
+
+  echo ""
+  echo "RUNNING VMS:"
+  VBoxManage list runningvms
+
+  echo ""
+  echo "Which machine?"
+  mapfile -t VM_LIST < <(VBoxManage list runningvms | awk -F'"' '{print $2}')
+  if [ "${#VM_LIST[@]}" -eq 0 ]; then
+    echo "⚠️  Nessuna VM in esecuzione."
+    exit 0
+  fi
+
+  select VM in "${VM_LIST[@]}" "quit"; do
+    if [ "$REPLY" = "$(( ${#VM_LIST[@]} + 1 ))" ]; then
+      echo "Annullato."
+      exit 0
+    elif [ -n "$VM" ]; then
+      echo "Selected: $VM"
+      break
+    else
+      echo "Scelta non valida."
+    fi
+  done
+
+  echo ""
+  echo "Scegli comando:"
+  select ITEM in reset pause shutdown quit; do
+    if [ "$ITEM" = "quit" ]; then
+      echo "Uscita."
+      break
+    elif [ -n "$ITEM" ]; then
+      echo "Eseguo VBoxManage controlvm \"$VM\" \"$ITEM\""
+      VBoxManage controlvm "$VM" "$ITEM"
+    else
+      echo "Comando non valido."
+    fi
+  done
+
+  exit 0
+fi
+
+
+
+
+
+if [ "$ACTION" = "ova-view" ] && [ -z "$INPUT_OVA" ]; then
+  echo "Uso: $0 ova-view <file.ova>"
+  exit 1
+fi
+
+if [ "$ACTION" = "ova-rename" ] && { [ -z "$NEW_NAME" ] || [ -z "$OUTPUT_OVA" ]; }; then
+  echo "Errore: per 'ova-rename' servono tre argomenti."
+  echo "Uso: $0 ova-rename <file.ova> <nuovo_nome_vm> <nuovo_file.ova>"
+  exit 1
+fi
+
+# === Solo per azione rename, calcola path assoluto in modo sicuro ===
+if [ "$ACTION" = "ova-rename" ]; then
+  OUTPUT_OVA_ABS=$(realpath "$OUTPUT_OVA")
+fi
+
+# === CREAZIONE CARTELLA TEMP ===
+TMP_DIR=$(mktemp -d)
+cp "$INPUT_OVA" "$TMP_DIR"
+cd "$TMP_DIR" || exit 1
+tar xvf "$(basename "$INPUT_OVA")" > /dev/null
+
+# === TROVA FILE OVF ===
+OVF_FILE=$(find . -maxdepth 1 -iname "*.ovf" | head -n 1)
+if [ ! -f "$OVF_FILE" ]; then
+  echo "File .ovf non trovato."
+  exit 1
+fi
+
+# === ESTRAI INFO ===
+VM_NAME=$(grep -oP '(?<=<VirtualSystem ovf:id=")[^"]+' "$OVF_FILE")
+DISKS=($(grep -oP '(?<=ovf:fileRef=")[^"]+\.vmdk' "$OVF_FILE" | sort -u))
+MF_FILE=$(find . -maxdepth 1 -iname "*.mf" | head -n 1)
+
+# === AZIONE VIEW ===
+if [ "$ACTION" = "ova-view" ]; then
+  echo ""
+  echo "========== INFORMAZIONI OVA =========="
+  echo "File: $INPUT_OVA"
+  echo "Nome VM: $VM_NAME"
+  echo ""
+  echo "Dischi trovati:"
+  for DISK in "${DISKS[@]}"; do
+    echo "  - $DISK"
+  done
+
+  if [ -f "$MF_FILE" ]; then
+    echo ""
+    echo "Manifest (.mf) presente: $MF_FILE"
+    echo "Contenuto:"
+    cat "$MF_FILE"
+  fi
+  echo "======================================="
+  cd ..
+  rm -rf "$TMP_DIR"
+  exit 0
+fi
+
+# === AZIONE RENAME ===
+echo "Modifica nome VM: $VM_NAME → $NEW_NAME"
+sed -i "s/${VM_NAME}/${NEW_NAME}/g" "$OVF_FILE"
+
+# === Rinomina VMDK ===
+declare -A VMDK_MAP
+INDEX=1
+for OLD_VMDK in "${DISKS[@]}"; do
+  NEW_VMDK="${NEW_NAME}-disk${INDEX}.vmdk"
+  mv "$OLD_VMDK" "$NEW_VMDK"
+  sed -i "s/${OLD_VMDK}/${NEW_VMDK}/g" "$OVF_FILE"
+  VMDK_MAP["$OLD_VMDK"]="$NEW_VMDK"
+  ((INDEX++))
+done
+
+# === Rigenera manifest ===
+if [ -f "$MF_FILE" ]; then
+  rm "$MF_FILE"
+fi
+for file in *.ovf *.vmdk; do
+  HASH=$(sha1sum "$file" | awk '{print $1}')
+  echo "SHA1($file)= $HASH"
+done > "${NEW_NAME}.mf"
+
+# === RIEPILOGO ===
+echo ""
+echo "========== RIEPILOGO MODIFICHE =========="
+echo "VM originale: $VM_NAME"
+echo "Nuovo nome VM: $NEW_NAME"
+echo ""
+echo "File OVF modificato: $OVF_FILE"
+echo "File manifest rigenerato: ${NEW_NAME}.mf"
+echo ""
+echo "Dischi rinominati:"
+for OLD in "${!VMDK_MAP[@]}"; do
+  echo "  $OLD -> ${VMDK_MAP[$OLD]}"
+done
+echo "========================================="
+
+# === CREA NUOVO FILE OVA IN LOCAZIONE SICURA ===
+echo ""
+echo "Creazione nuovo file OVA: $OUTPUT_OVA_ABS"
+tar cvf "$(basename "$OUTPUT_OVA_ABS")" *.ovf *.vmdk *.mf > /dev/null
+mv "$(basename "$OUTPUT_OVA_ABS")" "$OUTPUT_OVA_ABS"
+echo "✅ Fatto!"
+
+# === PULIZIA ===
+cd ..
+rm -rf "$TMP_DIR"
+
