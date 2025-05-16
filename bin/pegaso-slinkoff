@@ -1,0 +1,539 @@
+#!/bin/bash
+
+PEGASO_START_SCRIPT_PWD=$(pwd)
+
+# this is a code snipped:
+# from http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in
+# to understand what directory it's stored in bash script itself
+
+PEGASO_SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$PEGASO_SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+  PEGASO_DIR="$( cd -P "$( dirname "$PEGASO_SOURCE" )" && pwd )"
+  PEGASO_SOURCE="$(readlink "$PEGASO_SOURCE")"
+  [[ $PEGASO_SOURCE != /* ]] && PEGASO_SOURCE="$PEGASO_DIR/$PEGASO_SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+done
+PEGASO_SCRIPT_DIR="$( cd -P "$( dirname "$PEGASO_SOURCE" )" && pwd )"
+PEGASO_SCRIPT_FILE=$(basename "$PEGASO_SOURCE")
+# end of snipped
+
+cd "$PEGASO_SCRIPT_DIR"
+export PEGASO_ROOT="$(pwd)"
+
+PEGASO_PARENT_ROOT="$(dirname "$PEGASO_ROOT")"
+
+cd "$PEGASO_START_SCRIPT_PWD"
+
+# Function to show help
+show_help() {
+    cat <<EOF
+    Usage: $PEGASO_SCRIPT_FILE [OPTION] [PATH...]
+    Replace symbolic links with the files they point to. 
+    Also, generate local scripts 'slinkon' and 'slinkdiff' to restore them to their original state later.
+    
+    Options:
+       replace [PATH...]  Replace symbolic links with their target files
+                          PATH can be directories or specific files.
+                          If no PATHs are specified, process all links in current directory and subdirectories
+                          Also generate bash script 'slinkon' and 'slindiff' script in current directory
+                          in order to restore original symlink (slinkon) or see what changed meanshile (slinkdiff); 
+       info               Show information about links that would be replaced with no PATH
+       test               Run tests for slinkoff, slinkon, and slinkdiff
+       help               Display this help message
+    
+    Example:
+      first, get info:
+      $ $PEGASO_SCRIPT_FILE info            Show information about links"
+      $ $PEGASO_SCRIPT_FILE replace         Replace all symbolic links in the current directory and subdirectories
+      or:
+      $ $PEGASO_SCRIPT_FILE replace dir1 dir2/file.txt  Replace symbolic links in dir1 and the specific file dir2/file.txt
+      ... do your changes ...
+      $ ./slinkdiff        check what's changed
+      $ ./slinkon          restore original symlinks
+    
+    WARNING: using 'slinkon' without previously check using 'slinkdiff' could loose you data!
+
+    Without options, this help message is displayed.
+EOF
+}
+
+# Function to show info about links that would be replaced
+show_info() {
+    echo "[INFO] Showing links that would be replaced in $(pwd) and subdirectories"
+    echo "----------------------------------------------------------------------"
+
+    while IFS= read -r link; do
+        target=$(readlink -f "$link" 2>/dev/null)
+        
+        # Skip if the target doesn't exist or is a directory
+        if [ ! -e "$target" ] || [ -d "$target" ]; then
+            continue
+        fi
+        
+        echo "Link details:"
+        ls -l "$link"
+        echo "Points to:"
+        ls -l "$target"
+        # echo "Link: $link -> $target"
+        echo "----------------------------------------------------------------------"
+    done < <(find . -type l)
+
+    echo "[INFO] End of link information"
+}
+# Function to run the original slinkoff logic
+run_slinkoff() {
+    local paths=("$@")
+
+    # Enable debug mode if DEBUG environment variable is set
+    if [ -n "$DEBUG" ]; then
+        set -x  # Print commands and their arguments as they are executed
+    fi
+
+    echo "[INFO] Starting slinkoff script at $(date)"
+
+    # Check if we're in the correct directory
+    if [ ! -d "$(pwd)" ]; then
+        echo "[ERROR] Current directory does not exist or is not accessible."
+        exit 1
+    fi
+
+    # Create or overwrite the slinkon and slinkdiff scripts
+    echo "[INFO] Creating slinkon and slinkdiff scripts"
+    echo "#!/bin/bash" > slinkon
+    echo "# slinkon - Restore symbolic links that were replaced by slinkoff" >> slinkon
+    echo "# Generated on $(date)" >> slinkon
+    echo "" >> slinkon
+
+    echo "#!/bin/bash" > slinkdiff
+    echo "# slinkdiff - Compare content of real files with their original linked targets" >> slinkdiff
+    echo "# Generated on $(date)" >> slinkdiff
+    echo "" >> slinkdiff
+
+    # Make the scripts executable
+    chmod +x slinkon
+    chmod +x slinkdiff
+    echo "[INFO] Made scripts executable"
+
+    # Initialize counters
+    processed=0
+    replaced=0
+    skipped=0
+
+    echo "[INFO] Searching for symbolic links to files in $(pwd) and subdirectories"
+
+    # Modify the find command to process only specified paths or all if none specified
+    if [ ${#paths[@]} -eq 0 ]; then
+        find_command="find . -type l"
+    else
+        find_command="find ${paths[*]} -type l"
+    fi
+
+    # Find all symbolic links in the current directory and subdirectories
+    while IFS= read -r link; do
+        echo "[DEBUG] Processing link: $link"
+        
+        # Get the target of the link
+        target=$(readlink "$link")
+        echo "[DEBUG] Link target: $target"
+        
+        # Get the absolute path of the link
+        link_path=$(readlink -f "$link" 2>/dev/null)
+        echo "[DEBUG] Resolved target path: $link_path"
+        
+        # Increment processed counter
+        ((processed++))
+        
+        # Skip if the target doesn't exist
+        if [ ! -e "$link_path" ]; then
+            echo "[WARNING] Target of link '$link' does not exist. Skipping."
+            ((skipped++))
+            continue
+        fi
+        
+        # Skip if the target is a directory
+        if [ -d "$link_path" ]; then
+            echo "[INFO] Link '$link' points to a directory. Ignoring."
+            ((skipped++))
+            continue
+        fi
+        
+        # Skip if the target is not a regular file
+        if [ ! -f "$link_path" ]; then
+            echo "[WARNING] Target of link '$link' is not a regular file. Skipping."
+            ((skipped++))
+            continue
+        fi
+        
+        # Get the directory of the link
+        link_dir=$(dirname "$link")
+        echo "[DEBUG] Link directory: $link_dir"
+        
+        # Create a backup of the link
+        if [ -L "$link" ]; then
+            echo "[DEBUG] Creating backup of link $link"
+            mv "$link" "$link.lnk.bak"
+        fi
+        
+        # Copy the target file to replace the symbolic link
+        echo "[DEBUG] Copying $link_path to $link"
+        if ! cp -f "$link_path" "$link"; then
+            echo "[ERROR] Failed to copy $link_path to $link"
+            # Restore the original link if copy fails
+            if [ -f "$link.lnk.bak" ]; then
+                mv "$link.lnk.bak" "$link"
+            fi
+            ((skipped++))
+            continue
+        fi
+        
+        # Remove the backup if copy was successful
+        if [ -f "$link.lnk.bak" ]; then
+            rm -f "$link.lnk.bak"
+        fi
+        
+        # Add command to restore the link to slinkon script
+        echo "[DEBUG] Adding restore command for $link to slinkon"
+        echo "# Restore link: $link -> $target" >> slinkon
+        echo "if rm -f \"$link\" && ln -s \"$target\" \"$link\"; then" >> slinkon
+        echo "    echo \"[INFO] Restored link:\"" >> slinkon
+        echo "    ls -l \"$link\"" >> slinkon
+        echo "    echo \"Points to:\"" >> slinkon
+        echo "    ls -l \"$target\"" >> slinkon
+        echo "    echo \"----------------------------------------------------------------------\"" >> slinkon
+        echo "else" >> slinkon
+        echo "    echo \"[ERROR] Failed to restore link $link\"" >> slinkon
+        echo "fi" >> slinkon
+
+        # Add command to diff the files to slinkdiff script
+        echo "[DEBUG] Adding diff command for $link to slinkdiff"
+        echo "# Compare: $link with $link_path" >> slinkdiff
+        echo "echo \"Comparing $link with $link_path:\"" >> slinkdiff
+        echo "diff -u \"$link\" \"$link_path\" || echo \"[WARNING] Files differ or error occurred\"" >> slinkdiff
+        
+        # Increment replaced counter
+        ((replaced++))
+        
+        echo "[INFO] Replaced link: $link -> $link_path"
+     done < <($find_command)
+
+    # Make sure the scripts end with a newline
+    echo "" >> slinkon
+    echo "echo \"[INFO] Restoration complete.\"" >> slinkon
+    echo "echo \"[INFO] You can now remove both slinkon and slinkdiff scripts with:\"" >> slinkon
+    echo "echo \"rm -f slinkon slinkdiff\"" >> slinkon
+    echo "" >> slinkon
+    echo "" >> slinkdiff
+
+    echo "[INFO] Summary: Processed $processed symbolic links."
+    echo "[INFO] Successfully replaced $replaced links with real files."
+    if [ $replaced -eq 0 ]; then
+        echo "[INFO] No links were replaced. Removing slinkon and slinkdiff scripts."
+        rm -f slinkon slinkdiff
+    else
+        echo "[INFO] Use './slinkon' to restore the symbolic links."
+        echo "[INFO] Use './slinkdiff' to compare the content of the real files with their original targets."
+    fi
+
+    exit 0
+}
+
+
+# Create a temporary test directory
+TEST_DIR="/tmp/unexisting_1838392932289439589"
+
+# Clean up function to be called on exit
+cleanup() {
+    cd "$PEGASO_START_SCRIPT_PWD"
+    echo "Cleaning up test directory..."
+    rm -rf "$TEST_DIR"
+    echo "Cleanup complete."
+}
+
+# Register the cleanup function to run on script exit
+# trap cleanup EXIT
+# Remove the cleanup call from the create_test_structure function
+create_test_structure() {
+    echo "Creating test directory structure..."
+    echo pwd=$(pwd)
+    find
+    # Create subdirectories
+    mkdir -p dir1/subdir1 dir2/subdir2 dir3/subdir3
+    
+    # Create some regular files with content
+    echo "This is file1 content" > dir1/file1.txt
+    echo "This is file2 content" > dir2/file2.txt
+    echo "This is file3 content" > dir3/file3.txt
+    echo "This is a common file" > common_file.txt
+    
+    # Create symbolic links in various directories:
+    ln -s ../common_file.txt dir1/link_to_common.txt
+    ln -s ../dir2/file2.txt dir1/link_to_file2.txt
+    ln -s ../../dir1/file1.txt dir2/subdir2/link_to_file1.txt
+    ln -s ../dir3/file3.txt dir2/link_to_file3.txt
+    ln -s dir1/file1.txt link_in_root.txt
+    # bad link:
+    ln -s ../common_file.txt dir3/subdir3/deep_link_to_common.txt
+    
+    # Create a circular link (points to a directory containing the link)
+    ln -s dir1 dir2/circular_link 
+    
+    # Create a broken link
+    ln -s non_existent_file.txt broken_link.txt
+    
+    # Copy the slinkoff script to the test directory
+        
+    echo "Test structure created successfully."
+    
+    # List the created structure
+    echo "Directory structure:"
+    find . -type d | sort
+    
+    echo "Regular files:"
+    find . -type f | sort
+    
+    echo "Symbolic links:"
+    find . -type l | sort
+    
+}
+# Function to verify links are replaced with real files
+verify_links_replaced() {
+    echo "[INFO] Verifying links have been replaced with real files..."
+    
+    echo "[DEBUG] Current directory: $(pwd)"
+    
+    # We expect links to directories, broken links, and links with non-existent targets to remain
+    # dir2/circular_link (link to directory), broken_link.txt (broken link), dir3/subdir3/deep_link_to_common.txt (link with non-existent target)
+    EXPECTED_REMAINING=3
+    REMAINING_LINKS=$(find . -type l | wc -l)
+    
+    if [ "$REMAINING_LINKS" -eq "$EXPECTED_REMAINING" ]; then
+        echo "[SUCCESS] All expected symbolic links have been replaced."
+        echo "[DEBUG] Remaining links (expected):"
+        find . -type l -exec ls -la {} \;
+    else
+        echo "[ERROR] Expected $EXPECTED_REMAINING symbolic links to remain, but found $REMAINING_LINKS."
+        echo "[DEBUG] Remaining links:"
+        find . -type l -exec ls -la {} \;
+        return 1
+    fi
+    # Check if the content of the replaced files matches the original targets
+    echo "[DEBUG] Checking content of replaced files"
+    
+    # Check specific files that should have been replaced
+    FILES_TO_CHECK=(
+        "dir1/link_to_common.txt:common_file.txt"
+        "dir1/link_to_file2.txt:dir2/file2.txt"
+        "dir2/subdir2/link_to_file1.txt:dir1/file1.txt"
+        "dir2/link_to_file3.txt:dir3/file3.txt"
+        "link_in_root.txt:dir1/file1.txt"
+    )
+    
+    for file_pair in "${FILES_TO_CHECK[@]}"; do
+        replaced_file="${file_pair%%:*}"
+        original_file="${file_pair##*:}"
+        
+        if [ ! -f "$replaced_file" ]; then
+            echo "[ERROR] File $replaced_file does not exist"
+            return 1
+        fi
+        
+        if [ -L "$replaced_file" ]; then
+            echo "[ERROR] File $replaced_file is still a symbolic link"
+            return 1
+        fi
+        
+        ORIGINAL_CONTENT=$(cat "$original_file")
+        REPLACED_CONTENT=$(cat "$replaced_file")
+        
+        echo "[DEBUG] $original_file content: '$ORIGINAL_CONTENT'"
+        echo "[DEBUG] $replaced_file content: '$REPLACED_CONTENT'"
+        
+        if [ "$REPLACED_CONTENT" = "$ORIGINAL_CONTENT" ]; then
+            echo "[SUCCESS] Content of $replaced_file matches the original target."
+        else
+            echo "[ERROR] Content of $replaced_file does not match the original target."
+            echo "[ERROR] Expected: '$ORIGINAL_CONTENT'"
+            echo "[ERROR] Actual: '$REPLACED_CONTENT'"
+         
+            return 1
+        fi
+    done
+    
+    return 0
+}
+
+# Function to verify links are restored
+verify_links_restored() {
+    echo "Verifying links have been restored..."
+    
+    
+    # Check if the symbolic links have been restored
+    RESTORED_LINKS=$(find . -type l | wc -l)
+    
+    # We expect 8 links (7 original links including the one that points to a non-existent file)
+    if [ "$RESTORED_LINKS" -eq 8 ]; then
+        echo "Success: All symbolic links have been restored."
+    else
+        echo "Error: Expected 8 symbolic links, but found $RESTORED_LINKS."
+        find . -type l
+    
+        return 1
+    fi
+    
+    # Check if the links point to the correct targets
+    if [ "$(readlink dir1/link_to_common.txt)" = "../common_file.txt" ]; then
+        echo "Success: dir1/link_to_common.txt points to the correct target."
+    else
+        echo "Error: dir1/link_to_common.txt does not point to the correct target."
+        echo "Expected: ../common_file.txt"
+        echo "Actual: $(readlink dir1/link_to_common.txt)"
+    
+        return 1
+    fi
+    
+    if [ "$(readlink dir1/link_to_file2.txt)" = "../dir2/file2.txt" ]; then
+        echo "Success: dir1/link_to_file2.txt points to the correct target."
+    else
+        echo "Error: dir1/link_to_file2.txt does not point to the correct target."
+        echo "Expected: ../dir2/file2.txt"
+        echo "Actual: $(readlink dir1/link_to_file2.txt)"
+    
+        return 1
+    fi
+    
+    
+    return 0
+}
+
+# Function to test slinkdiff
+test_slinkdiff() {
+    echo "Testing slinkdiff..."
+    
+    # Modify one of the files that was previously a link
+    echo "Modified content" > dir1/link_to_common.txt
+    find
+    cat slinkdiff
+    # Run slinkdiff and capture output
+    DIFF_OUTPUT=$(bash slinkdiff)
+    
+    # Check if diff detected the change
+    if echo "$DIFF_OUTPUT" | grep -q "Modified content"; then
+        echo "Success: slinkdiff correctly detected the modified content."
+    else
+        echo "Error: slinkdiff did not detect the modified content."
+        return 1
+    fi
+    
+    return 0
+}
+
+# ... existing code ...
+
+run_tests() {
+    echo "Starting tests for slinkoff, slinkon, and slinkdiff..."
+    trap cleanup EXIT
+
+    # Create main test directory
+    TEST_DIR=$(mktemp -d)
+    mkdir -p "$TEST_DIR"
+    cd "$TEST_DIR"
+
+    # Create the test structure
+    create_test_structure
+   
+    # Run slinkoff on all links
+    echo "Running slinkoff info ..."
+    (cd "$TEST_DIR" && bash "$PEGASO_SCRIPT_DIR/$PEGASO_SCRIPT_FILE" info)
+
+    echo "Running slinkoff on all links..."
+    # Ensure the script is executed in the test directory
+    (cd "$TEST_DIR" && bash "$PEGASO_SCRIPT_DIR/$PEGASO_SCRIPT_FILE" replace)
+    echo pwd=$(pwd)
+
+    # Verify links have been replaced
+    verify_links_replaced
+    if [ $? -ne 0 ]; then
+        echo "Test failed: Links were not properly replaced."
+        return 1
+    fi
+    
+    # Test slinkdiff before restoring links
+    test_slinkdiff
+    if [ $? -ne 0 ]; then
+        echo "Test failed: slinkdiff did not work correctly."
+        return 1
+    fi
+    
+    # Run slinkon to restore links
+    echo "Running slinkon to restore links..."
+    (cd "$TEST_DIR" && bash slinkon)
+    
+    # Verify links have been restored
+    verify_links_restored
+    if [ $? -ne 0 ]; then
+        echo "Test failed: Links were not properly restored."
+        return 1
+    fi
+    
+    # New test: Run slinkoff with specific paths
+    echo "Running slinkoff with specific paths..."
+    (cd "$TEST_DIR" && bash "$PEGASO_SCRIPT_DIR/$PEGASO_SCRIPT_FILE" replace dir1 dir2/subdir2)
+    
+    # Verify only specified links have been replaced
+    verify_specific_links_replaced
+    if [ $? -ne 0 ]; then
+        echo "Test failed: Specific links were not properly replaced."
+        return 1
+    fi
+    
+    echo "Tests completed successfully!"
+    return 0
+}
+
+# Add a new function to verify specific links
+verify_specific_links_replaced() {
+    echo "[INFO] Verifying specific links have been replaced with real files..."
+    
+    echo "[DEBUG] Current directory: $(pwd)"
+    
+    # Check if links in dir1 and dir2/subdir2 have been replaced
+    if [ -L "dir1/link_to_common.txt" ] || [ -L "dir1/link_to_file2.txt" ] || [ -L "dir2/subdir2/link_to_file1.txt" ]; then
+        echo "[ERROR] Links in specified directories were not replaced."
+       
+        return 1
+    fi
+    
+    # Check if links outside specified paths remain intact
+    if [ ! -L "dir2/link_to_file3.txt" ] || [ ! -L "link_in_root.txt" ]; then
+        echo "[ERROR] Links outside specified paths were incorrectly replaced."
+       
+        return 1
+    fi
+    
+    echo "[SUCCESS] Specific links have been correctly replaced."
+    
+    return 0
+}
+
+
+case "$1" in
+    replace)
+        shift  # Rimuove 'replace' dagli argomenti
+        run_slinkoff "$@"  # Passa tutti gli argomenti rimanenti a run_slinkoff
+        ;;
+    info)
+        show_info
+        ;;
+    test)
+        run_tests
+        ;;
+    help|"")
+        show_help
+        ;;
+    *)
+        echo "Error: Unknown option '$1'"
+        show_help
+        exit 1
+        ;;
+esac
+
+exit 0
