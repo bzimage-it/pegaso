@@ -90,6 +90,22 @@ This is where you edit the content of a specific page.
         *   **Load to Draft:** Copy the content of a historical version into the draft editor to use it as a starting point for new changes.
         *   **Delete:** Remove a specific historical version.
 
+### 3. Screenshots
+
+**Page Manager View**
+
+*The main dashboard to create, delete, and manage pages and their passwords.*
+
+![Page Manager View](docs/screenshots/manager-view.png)
+
+---
+
+**Page Editor View**
+
+*The editor for a single page, showing the draft area, status bar, actions, and version history.*
+
+![Page Editor View](docs/screenshots/editor-view.png)
+
 ## Directory Structure
 
 The application maintains a simple directory structure:
@@ -106,16 +122,6 @@ The application maintains a simple directory structure:
 *   `lib/`, `theme/`, `mode/`: Contain the CodeMirror editor library and its assets.
 *   `index.php`: The main application file.
 *   `pwd.secret`: The admin password file.
-
-## Web Server Configuration (Apache `.htaccess`)
-
-If you are using an Apache web server, this project includes a `.htaccess` file to improve usability and security. Its main functions are:
-
-*   **Security: Protects Secret Files:** It blocks any direct web access to sensitive files like `pwd.secret` and the `.htaccess` file itself. This is a critical security measure to prevent your passwords from being exposed.
-*   **Disables Directory Listing:** It prevents visitors from seeing a list of files in a directory if an `index.html` file is not present, which is good practice.
-*   **URL Rewriting (Optional):** It allows for cleaner URLs (e.g., `https://.../pages/my-page-name` instead of `https://.../pages/index.php?page=my-page-name`). This feature is for convenience and requires the `mod_rewrite` module to be enabled on your Apache server. The application will work correctly even without this feature by using the standard URL parameters.
-
-> **Note for Nginx users:** The URL rewriting and file protection logic in `.htaccess` is specific to Apache. You will need to configure similar rules in your Nginx server block to achieve the same level of security and functionality.
 
 ## Security Considerations & Future Improvements
 
