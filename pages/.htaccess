@@ -1,0 +1,24 @@
+# La parte fondamentale è [QSA] (Query String Append), che assicura che ?pwd=... e qualsiasi altro parametro vengano sempre 
+# passati allo script index.php:
+RewriteEngine On
+RewriteCond %{REQUEST_FILENAME} !-f
+RewriteRule ^(.*)$ index.php/$1 [L,QSA]
+
+# Disabilita la visualizzazione dell'elenco dei file nelle directory.
+# Se un utente visita una cartella senza un file index.html o index.php,
+# riceverà un errore "Accesso Negato" (403 Forbidden) invece di vedere
+# la lista di tutti i file.
+Options -Indexes
+
+# Protegge il file .htaccess stesso.
+# Questa sezione impedisce a chiunque di accedere al contenuto di questo
+# file tramite il browser (es. https://tuosito.com/.htaccess).
+# È una misura di sicurezza aggiuntiva.
+<Files ".htaccess">
+    Require all denied
+</Files>
+
+# Impedisce l'accesso a tutti i file con estensione .secret
+<Files "*.secret">
+    Require all denied
+</Files>
