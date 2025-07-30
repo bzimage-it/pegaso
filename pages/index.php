@@ -24,279 +24,14 @@ function get_version_id($filename) {
 $supported_langs = ['en', 'it', 'fr', 'es', 'pt'];
 $lang = isset($_GET['lang']) && in_array($_GET['lang'], $supported_langs) ? $_GET['lang'] : 'en';
 
-$translations = [
-    'en' => [
-        'page_manager' => 'Page Manager',
-        'existing_pages' => 'Existing Pages',
-        'no_pages_found' => 'No pages found. Create a new one!',
-        'create_new_page' => 'Create New Page',
-        'page_name_placeholder' => 'page-name',
-        'create_page_btn' => 'Create Page',
-        'delete_page_btn' => 'Delete Page',
-        'page_editor' => 'Page Editor',
-        'back_to_list' => '&larr; Back to page list',
-        'draft_editor' => 'Draft Editor',
-        'save_draft_btn' => 'Save Draft',
-        'reload_draft_btn' => 'Reload Draft',
-        'word_wrap_label' => 'Word Wrap',
-        'comment_placeholder' => 'Comment (optional)',
-        'publish_btn' => 'Publish',
-        'history' => 'History',
-        'no_history_found' => 'No historical versions found.',
-        'draft_status' => 'Draft',
-        'published_status' => 'Published',
-        'view_link' => '(View)',
-        'load_to_draft_btn' => 'Load to Draft',
-        'preview_btn' => 'Preview',
-        'edit_comment_btn' => 'Edit Comment',
-        'restore_btn' => 'Restore',
-        'delete_btn' => 'Delete',
-        'published_badge' => 'Published',
-        'draft_badge' => 'Draft',
-        'show_pwd_btn' => 'Show',
-        'hide_pwd_btn' => 'Hide',
-        'copy_pwd_btn' => 'Copy',
-        'reset_pwd_btn' => 'Reset Password',
-        'generate_pwd_btn' => 'Generate Password',
-        'become_local_user_btn' => 'Become Local User',
-        'js' => [
-            'publish_confirm' => 'Are you sure you want to publish?',
-            'load_published_confirm' => 'Loading the published version into the draft will overwrite its current content. Continue?',
-            'edit_comment_prompt' => 'Enter the new comment for this version:',
-            'restore_publish_confirm' => 'Are you sure you want to restore this version as published? The public file will be overwritten.',
-            'load_history_confirm' => 'Loading this version into the draft will overwrite its current content. Continue?',
-            'delete_confirm' => 'Are you sure you want to delete this version? Both the HTML and comment file will be removed.',
-            'unsaved_changes_alert' => 'You have unsaved changes. Are you sure you want to leave?',
-            'save_changes_btn' => 'Save Changes',
-            'reload_draft_confirm' => 'Are you sure you want to discard all unsaved changes and reload the last saved draft?',
-            'modal_title' => 'Unsaved Changes',
-            'modal_text' => 'You have unsaved changes in the editor. What would you like to do?',
-            'modal_save_view' => 'Save & View',
-            'modal_view_saved' => 'View Saved Version',
-            'modal_cancel' => 'Cancel',
-            'pwd_copied_alert' => 'Password copied to clipboard!',
-            'reset_pwd_confirm' => 'Are you sure you want to delete the password for this page? It will become accessible only with the admin password.',
-            'delete_page_confirm' => 'Are you sure you want to move this entire page to the trash? It can only be restored via FTP.',
-        ],
-    ],
-    'it' => [
-        'page_manager' => 'Gestore Pagine',
-        'existing_pages' => 'Pagine Esistenti',
-        'no_pages_found' => 'Nessuna pagina trovata. Creane una nuova!',
-        'create_new_page' => 'Crea Nuova Pagina',
-        'page_name_placeholder' => 'nome-pagina',
-        'create_page_btn' => 'Crea Pagina',
-        'delete_page_btn' => 'Elimina Pagina',
-        'page_editor' => 'Editor Pagina',
-        'back_to_list' => '&larr; Torna alla lista pagine',
-        'draft_editor' => 'Editor della Bozza',
-        'save_draft_btn' => 'Salva Bozza',
-        'reload_draft_btn' => 'Ricarica Bozza',
-        'word_wrap_label' => 'A capo automatico',
-        'comment_placeholder' => 'Commento (opzionale)',
-        'publish_btn' => 'Pubblica',
-        'history' => 'Cronologia',
-        'no_history_found' => 'Nessuna versione storica trovata.',
-        'draft_status' => 'Bozza',
-        'published_status' => 'Pubblicata',
-        'view_link' => '(Visualizza)',
-        'load_to_draft_btn' => 'Carica in Bozza',
-        'preview_btn' => 'Anteprima',
-        'edit_comment_btn' => 'Mod. Commento',
-        'restore_btn' => 'Ripristina',
-        'delete_btn' => 'Elimina',
-        'published_badge' => 'Pubblicata',
-        'draft_badge' => 'Bozza',
-        'show_pwd_btn' => 'Mostra',
-        'hide_pwd_btn' => 'Nascondi',
-        'copy_pwd_btn' => 'Copia',
-        'reset_pwd_btn' => 'Reimposta Password',
-        'generate_pwd_btn' => 'Genera Password',
-        'become_local_user_btn' => 'Diventa Utente Locale',
-        'js' => [
-            'publish_confirm' => 'Sei sicuro di voler pubblicare?',
-            'load_published_confirm' => 'Caricare la versione pubblicata nella bozza sovrascriverà il contenuto attuale. Continuare?',
-            'edit_comment_prompt' => 'Inserisci il nuovo commento per questa versione:',
-            'restore_publish_confirm' => 'Sei sicuro di voler ripristinare questa versione come pubblicata? Il file pubblico verrà sovrascritto.',
-            'load_history_confirm' => 'Caricare questa versione nella bozza sovrascriverà il contenuto attuale. Continuare?',
-            'delete_confirm' => 'Sei sicuro di voler eliminare questa versione? Sia il file HTML che il commento verranno rimossi.',
-            'unsaved_changes_alert' => 'Hai delle modifiche non salvate. Sei sicuro di voler uscire?',
-            'save_changes_btn' => 'Salva Modifiche',
-            'reload_draft_confirm' => 'Sei sicuro di voler scartare tutte le modifiche non salvate e ricaricare l\'ultima bozza salvata?',
-            'modal_title' => 'Modifiche non salvate',
-            'modal_text' => 'Ci sono modifiche non salvate nell\'editor. Cosa vuoi fare?',
-            'modal_save_view' => 'Salva e Visualizza',
-            'modal_view_saved' => 'Visualizza Versione Salvata',
-            'modal_cancel' => 'Annulla',
-            'pwd_copied_alert' => 'Password copiata negli appunti!',
-            'reset_pwd_confirm' => 'Sei sicuro di voler eliminare la password per questa pagina? Diventerà accessibile solo con la password di amministratore.',
-            'delete_page_confirm' => 'Sei sicuro di voler spostare questa intera pagina nel cestino? Potrà essere ripristinata solo tramite FTP.',
-        ],
-    ],
-    'fr' => [
-        'page_manager' => 'Gestionnaire de Pages',
-        'existing_pages' => 'Pages Existantes',
-        'no_pages_found' => 'Aucune page trouvée. Créez-en une nouvelle !',
-        'create_new_page' => 'Créer une Nouvelle Page',
-        'page_name_placeholder' => 'nom-de-la-page',
-        'create_page_btn' => 'Créer la Page',
-        'delete_page_btn' => 'Supprimer la Page',
-        'page_editor' => 'Éditeur de Page',
-        'back_to_list' => '&larr; Retour à la liste des pages',
-        'draft_editor' => 'Éditeur de Brouillon',
-        'save_draft_btn' => 'Enregistrer le Brouillon',
-        'reload_draft_btn' => 'Recharger le Brouillon',
-        'word_wrap_label' => 'Retour à la ligne',
-        'comment_placeholder' => 'Commentaire (optionnel)',
-        'publish_btn' => 'Publier',
-        'history' => 'Historique',
-        'no_history_found' => 'Aucune version historique trouvée.',
-        'draft_status' => 'Brouillon',
-        'published_status' => 'Publiée',
-        'view_link' => '(Voir)',
-        'load_to_draft_btn' => 'Charger en Brouillon',
-        'preview_btn' => 'Aperçu',
-        'edit_comment_btn' => 'Éditer Commentaire',
-        'restore_btn' => 'Restaurer',
-        'delete_btn' => 'Supprimer',
-        'published_badge' => 'Publiée',
-        'draft_badge' => 'Brouillon',
-        'show_pwd_btn' => 'Afficher',
-        'hide_pwd_btn' => 'Masquer',
-        'copy_pwd_btn' => 'Copier',
-        'reset_pwd_btn' => 'Réinitialiser Mot de Passe',
-        'generate_pwd_btn' => 'Générer Mot de Passe',
-        'become_local_user_btn' => 'Devenir Utilisateur Local',
-        'js' => [
-            'publish_confirm' => 'Voulez-vous vraiment publier ?',
-            'load_published_confirm' => 'Charger la version publiée dans le brouillon écrasera son contenu actuel. Continuer ?',
-            'edit_comment_prompt' => 'Entrez le nouveau commentaire pour cette version :',
-            'restore_publish_confirm' => 'Voulez-vous vraiment restaurer cette version comme publiée ? Le fichier public sera écrasé.',
-            'load_history_confirm' => 'Charger cette version dans le brouillon écrasera son contenu actuel. Continuer ?',
-            'delete_confirm' => 'Voulez-vous vraiment supprimer cette version ? Le fichier HTML et le fichier de commentaire seront supprimés.',
-            'unsaved_changes_alert' => 'Vous avez des modifications non enregistrées. Voulez-vous vraiment quitter ?',
-            'save_changes_btn' => 'Enregistrer les modifications',
-            'reload_draft_confirm' => 'Voulez-vous vraiment annuler toutes les modifications non enregistrées et recharger le dernier brouillon sauvegardé ?',
-            'modal_title' => 'Modifications non enregistrées',
-            'modal_text' => 'Vous avez des modifications non enregistrées dans l\'éditeur. Que voulez-vous faire ?',
-            'modal_save_view' => 'Enregistrer & Voir',
-            'modal_view_saved' => 'Voir la Version Enregistrée',
-            'modal_cancel' => 'Annuler',
-            'pwd_copied_alert' => 'Mot de passe copié dans le presse-papiers !',
-            'reset_pwd_confirm' => 'Voulez-vous vraiment supprimer le mot de passe de cette page ? Elle ne sera plus accessible qu\'avec le mot de passe administrateur.',
-            'delete_page_confirm' => 'Voulez-vous vraiment déplacer cette page entière dans la corbeille ? Elle ne pourra être restaurée que par FTP.',
-        ],
-    ],
-    'es' => [
-        'page_manager' => 'Gestor de Páginas',
-        'existing_pages' => 'Páginas Existentes',
-        'no_pages_found' => 'No se encontraron páginas. ¡Crea una nueva!',
-        'create_new_page' => 'Crear Nueva Página',
-        'page_name_placeholder' => 'nombre-de-pagina',
-        'create_page_btn' => 'Crear Página',
-        'delete_page_btn' => 'Eliminar Página',
-        'page_editor' => 'Editor de Página',
-        'back_to_list' => '&larr; Volver a la lista de páginas',
-        'draft_editor' => 'Editor de Borrador',
-        'save_draft_btn' => 'Guardar Borrador',
-        'reload_draft_btn' => 'Recargar Borrador',
-        'word_wrap_label' => 'Ajuste de línea',
-        'comment_placeholder' => 'Comentario (opcional)',
-        'publish_btn' => 'Publicar',
-        'history' => 'Historial',
-        'no_history_found' => 'No se encontraron versiones en el historial.',
-        'draft_status' => 'Borrador',
-        'published_status' => 'Publicada',
-        'view_link' => '(Ver)',
-        'load_to_draft_btn' => 'Cargar en Borrador',
-        'preview_btn' => 'Vista Previa',
-        'edit_comment_btn' => 'Editar Comentario',
-        'restore_btn' => 'Restaurar',
-        'delete_btn' => 'Eliminar',
-        'published_badge' => 'Publicada',
-        'draft_badge' => 'Borrador',
-        'show_pwd_btn' => 'Mostrar',
-        'hide_pwd_btn' => 'Ocultar',
-        'copy_pwd_btn' => 'Copiar',
-        'reset_pwd_btn' => 'Restablecer Contraseña',
-        'generate_pwd_btn' => 'Generar Contraseña',
-        'become_local_user_btn' => 'Ser Usuario Local',
-        'js' => [
-            'publish_confirm' => '¿Está seguro de que desea publicar?',
-            'load_published_confirm' => 'Cargar la versión publicada en el borrador sobrescribirá su contenido actual. ¿Continuar?',
-            'edit_comment_prompt' => 'Ingrese el nuevo comentario para esta versión:',
-            'restore_publish_confirm' => '¿Está seguro de que desea restaurar esta versión como publicada? El archivo público será sobrescrito.',
-            'load_history_confirm' => 'Cargar esta versión en el borrador sobrescribirá su contenido actual. ¿Continuar?',
-            'delete_confirm' => '¿Está seguro de que desea eliminar esta versión? Se eliminarán tanto el archivo HTML como el de comentario.',
-            'unsaved_changes_alert' => 'Tiene cambios sin guardar. ¿Está seguro de que desea salir?',
-            'save_changes_btn' => 'Guardar Cambios',
-            'reload_draft_confirm' => '¿Está seguro de que desea descartar todos los cambios no guardados y recargar el último borrador guardado?',
-            'modal_title' => 'Cambios sin guardar',
-            'modal_text' => 'Tiene cambios sin guardar en el editor. ¿Qué le gustaría hacer?',
-            'modal_save_view' => 'Guardar y Ver',
-            'modal_view_saved' => 'Ver Versión Guardada',
-            'modal_cancel' => 'Cancelar',
-            'pwd_copied_alert' => '¡Contraseña copiada al portapapeles!',
-            'reset_pwd_confirm' => '¿Está seguro de que desea eliminar la contraseña de esta página? Solo será accesible con la contraseña de administrador.',
-            'delete_page_confirm' => '¿Está seguro de que desea mover esta página completa a la papelera? Solo se podrá restaurar a través de FTP.',
-        ],
-    ],
-    'pt' => [
-        'page_manager' => 'Gestor de Páginas',
-        'existing_pages' => 'Páginas Existentes',
-        'no_pages_found' => 'Nenhuma página encontrada. Crie uma nova!',
-        'create_new_page' => 'Criar Nova Página',
-        'page_name_placeholder' => 'nome-da-pagina',
-        'create_page_btn' => 'Criar Página',
-        'delete_page_btn' => 'Excluir Página',
-        'page_editor' => 'Editor de Página',
-        'back_to_list' => '&larr; Voltar à lista de páginas',
-        'draft_editor' => 'Editor de Rascunho',
-        'save_draft_btn' => 'Salvar Rascunho',
-        'reload_draft_btn' => 'Recarregar Rascunho',
-        'word_wrap_label' => 'Quebra de linha',
-        'comment_placeholder' => 'Comentário (opcional)',
-        'publish_btn' => 'Publicar',
-        'history' => 'Histórico',
-        'no_history_found' => 'Nenhuma versão histórica encontrada.',
-        'draft_status' => 'Rascunho',
-        'published_status' => 'Publicada',
-        'view_link' => '(Ver)',
-        'load_to_draft_btn' => 'Carregar para Rascunho',
-        'preview_btn' => 'Pré-visualizar',
-        'edit_comment_btn' => 'Editar Comentário',
-        'restore_btn' => 'Restaurar',
-        'delete_btn' => 'Excluir',
-        'published_badge' => 'Publicada',
-        'draft_badge' => 'Rascunho',
-        'show_pwd_btn' => 'Mostrar',
-        'hide_pwd_btn' => 'Ocultar',
-        'copy_pwd_btn' => 'Copiar',
-        'reset_pwd_btn' => 'Redefinir Senha',
-        'generate_pwd_btn' => 'Gerar Senha',
-        'become_local_user_btn' => 'Tornar-se Usuário Local',
-        'js' => [
-            'publish_confirm' => 'Tem certeza de que deseja publicar?',
-            'load_published_confirm' => 'Carregar a versão publicada no rascunho irá sobrescrever o conteúdo atual. Continuar?',
-            'edit_comment_prompt' => 'Digite o novo comentário para esta versão:',
-            'restore_publish_confirm' => 'Tem certeza de que deseja restaurar esta versão como publicada? O arquivo público será sobrescrito.',
-            'load_history_confirm' => 'Carregar esta versão para o rascunho irá sobrescrever o conteúdo atual. Continuar?',
-            'delete_confirm' => 'Tem certeza de que deseja excluir esta versão? Tanto o arquivo HTML quanto o de comentário serão removidos.',
-            'unsaved_changes_alert' => 'Você tem alterações não salvas. Tem certeza de que deseja sair?',
-            'save_changes_btn' => 'Salvar Alterações',
-            'reload_draft_confirm' => 'Tem certeza de que deseja descartar todas as alterações não salvas e recarregar o último rascunho salvo?',
-            'modal_title' => 'Alterações não salvas',
-            'modal_text' => 'Você tem alterações não salvas no editor. O que você gostaria de fazer?',
-            'modal_save_view' => 'Salvar e Ver',
-            'modal_view_saved' => 'Ver Versão Salva',
-            'modal_cancel' => 'Cancelar',
-            'pwd_copied_alert' => 'Senha copiada para a área de transferência!',
-            'reset_pwd_confirm' => 'Tem certeza de que deseja excluir a senha desta página? Ela só ficará acessível com a senha de administrador.',
-            'delete_page_confirm' => 'Tem certeza de que deseja mover esta página inteira para a lixeira? Ela só poderá ser restaurada via FTP.',
-        ],
-    ],
-];
-$i18n = $translations[$lang];
+
+// Load translations from the correct file
+$lang_file = __DIR__ . '/lang/' . $lang . '.php';
+if (!file_exists($lang_file)) {
+    // Fallback to English if the language file doesn't exist for any reason
+    $lang_file = __DIR__ . '/lang/en.php';
+}
+$i18n = require $lang_file;
 
 // --- PASSWORD AUTHENTICATION ---
 $page_name = isset($_GET['page']) ? sanitize_page_name($_GET['page']) : null;
@@ -417,7 +152,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
         if (!is_dir($page_path)) die('Invalid page.');
 
         $draft_file = $page_path . 'draft.html';
-        $pub_file = $page_path . 'content.html';
+        $pub_file = $page_path . 'index.html';
         $state_file = $page_path . '_published_state.txt';
         $draft_state_file = $page_path . '_draft_state.txt';
 
@@ -427,6 +162,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     file_put_contents($draft_file, $_POST['content']);
                     if (file_exists($draft_state_file)) {
                         unlink($draft_state_file);
+                    }
+                    // If it's an AJAX request, send a success response and stop.
+                    if (isset($_POST['ajax']) && $_POST['ajax'] === 'true') {
+                        header('Content-Type: application/json');
+                        echo json_encode(['status' => 'success']);
+                        exit();
                     }
                 }
                 break;
@@ -458,7 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                     if (file_exists($source_file) && is_file($source_file)) {
                         copy($source_file, $draft_file);
                         
-                        if (basename($_POST['file']) !== 'content.html') {
+                        if (basename($_POST['file']) !== 'index.html') {
                             $version_id = get_version_id($_POST['file']);
                             file_put_contents($draft_state_file, $version_id);
                         } else {
@@ -700,7 +441,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
     <?php
         $page_path = CONTENT_DIR . '/' . $page_name . '/';
         $draft_file = $page_path . 'draft.html';
-        $pub_file = $page_path . 'content.html';
+        $pub_file = $page_path . 'index.html';
         $state_file = $page_path . '_published_state.txt';
         $draft_state_file = $page_path . '_draft_state.txt';
         $action_url = $base_url . '&page=' . $page_name;
@@ -748,10 +489,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             <span class="status-dot <?php echo $pub_exists ? 'dot-green' : 'dot-gray'; ?>"></span>
             <strong><?php echo $i18n['published_status']; ?></strong>
             <?php if ($pub_exists): ?>
-                <a href="<?php echo htmlspecialchars($base_path . '/' . CONTENT_DIR . '/' . $page_name . '/content.html'); ?>" target="_blank" class="file-link"><?php echo $i18n['view_link']; ?></a>
+                <a href="<?php echo htmlspecialchars($base_path . '/' . CONTENT_DIR . '/' . $page_name . '/index.html'); ?>" target="_blank" class="file-link"><?php echo $i18n['view_link']; ?></a>
                 <form action="<?php echo $action_url; ?>" method="post" onsubmit="return confirm('<?php echo $i18n['js']['load_published_confirm']; ?>');">
                     <input type="hidden" name="action" value="restore">
-                    <input type="hidden" name="file" value="content.html">
+                    <input type="hidden" name="file" value="index.html">
                     <input type="hidden" name="csrf_token" value="<?php echo $csrf_token; ?>">
                     <button type="submit" class="btn-load-draft btn-load-draft-small"><?php echo $i18n['load_to_draft_btn']; ?></button>
                 </form>
@@ -788,7 +529,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             <textarea name="content" id="html-editor"><?php echo $draft_content; ?></textarea>
             
             <div class="actions">
-                <button type="submit" name="action" value="save_draft" id="save-draft-btn" class="btn-primary"><?php echo $i18n['save_draft_btn']; ?></button>
+                <button type="button" id="save-draft-btn" class="btn-primary"><?php echo $i18n['save_draft_btn']; ?></button>
                 <button type="button" id="reload-draft-btn" class="btn-secondary" disabled><?php echo $i18n['reload_draft_btn']; ?></button>
                 <div class="publish-controls">
                     <input type="text" name="comment" placeholder="<?php echo $i18n['comment_placeholder']; ?>">
@@ -881,6 +622,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
             }
         }
 
+        // --- Editor State Persistence using localStorage ---
+        const pageName = '<?php echo $page_name; ?>';
+        const storageKey = `editor_settings_${pageName}`;
+
+        function saveEditorSettings(editor) {
+            const settings = {
+                wordWrap: editor.getOption('lineWrapping'),
+                // We can add more settings here in the future
+                // cursor: editor.getCursor(),
+                // scrollInfo: editor.getScrollInfo()
+            };
+            localStorage.setItem(storageKey, JSON.stringify(settings));
+        }
+
+        function loadAndApplyEditorSettings(editor) {
+            const savedSettings = localStorage.getItem(storageKey);
+            if (savedSettings) {
+                const settings = JSON.parse(savedSettings);
+                
+                editor.setOption('lineWrapping', settings.wordWrap || false);
+                document.getElementById('word-wrap-toggle').checked = settings.wordWrap || false;
+            }
+        }
+
         document.addEventListener("DOMContentLoaded", function() {
             var editor = CodeMirror.fromTextArea(document.getElementById("html-editor"), {
                 lineNumbers: true, 
@@ -888,6 +653,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 theme: "material", 
                 lineWrapping: false
             });
+
+            // Load saved settings on startup
+            loadAndApplyEditorSettings(editor);
 
             // This is required to make the form submission work with CodeMirror
             editor.save(); 
@@ -919,6 +687,49 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
                 }
             });
             
+            saveBtn.addEventListener('click', function(event) {
+                event.preventDefault();
+                editor.save(); // Update the textarea with the editor's content
+
+                const originalBtnText = this.innerText;
+                this.innerText = 'Saving...';
+                this.disabled = true;
+
+                const formData = new FormData(editorForm);
+                formData.append('action', 'save_draft');
+                formData.append('ajax', 'true'); // Add a flag for the server
+
+                fetch('<?php echo $action_url; ?>', {
+                    method: 'POST',
+                    body: formData
+                })
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error('Network response was not ok');
+                    }
+                    return response.json();
+                })
+                .then(data => {
+                    if (data.status === 'success') {
+                        isDirty = false;
+                        this.innerText = 'Saved!';
+                        this.className = 'btn-primary';
+                        reloadBtn.disabled = true;
+                        draftDot.className = 'status-dot dot-blue'; // Or dot-green if you prefer
+                        setTimeout(() => {
+                           this.innerText = i18n.save_changes_btn; // Revert to "Save Changes" if it was dirty
+                           this.disabled = false;
+                        }, 1500);
+                    }
+                })
+                .catch(error => {
+                    console.error('Error saving draft:', error);
+                    alert('Error saving draft. Check the console for details.');
+                    this.innerText = originalBtnText;
+                    this.disabled = false;
+                });
+            });
+
             window.onbeforeunload = function() {
                 if (isDirty) {
                     return i18n.unsaved_changes_alert;
@@ -941,6 +752,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'])) {
 
             wordWrapToggle.addEventListener('change', function() {
                 editor.setOption('lineWrapping', this.checked);
+                saveEditorSettings(editor);
             });
 
             if (viewDraftLink) {
