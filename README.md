@@ -67,6 +67,11 @@ a simple daemon to enable or disable internet access for some specific user list
 
 a c-based calculator and real-time expression evaluation; can be used like a command line calcultor or simple c-expressions evaluations; provides special macros and features to inspec and manipulates floating points; 
 
+## ```pages```
+
+A lightweight, single-file, flat-file Content Management System (CMS) written in PHP. It allows you to create, edit, and manage simple static HTML pages directly from your web browser without needing a database. It's designed for scenarios where you need a quick and secure way to manage a single pages ("all in one page") of content.
+
+
 
 
 
