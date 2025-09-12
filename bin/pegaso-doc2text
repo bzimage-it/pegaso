@@ -1,0 +1,567 @@
+#!/bin/bash
+
+# Debug mode (set PEGASO_DEBUG=1 to enable)
+DEBUG_MODE=${PEGASO_DEBUG:-0}
+
+# Function for debug output
+debug_echo() {
+    if [[ "$DEBUG_MODE" == "1" ]]; then
+        echo "  🔍 Debug: $*" >&2
+    fi
+}
+
+# Parse command line arguments
+USE_LIBREOFFICE_FALLBACK=true
+INCLUDE_REJECT_VERSION=false
+FILES_TO_PROCESS=()
+
+# Check if no arguments were provided
+if [[ $# -eq 0 ]]; then
+    echo "Usage: $0 [OPTIONS] [FILES/DIRECTORIES...]"
+    echo ""
+    echo "Convert .doc/.docx files to markdown (default: accept version only)"
+    echo ""
+    echo "ARGUMENTS:"
+    echo "  FILES/DIRECTORIES        Specific .doc/.docx files or directories to process"
+    echo "                          Use '.' to process current directory"
+    echo "                          This parameter is REQUIRED"
+    echo ""
+    echo "OPTIONS:"
+    echo "  --include-reject            Also create reject version (track-changes rejected)"
+    echo "  --no-libreoffice-fallback   Disable LibreOffice fallback for EMF conversion (default: enabled)"
+    echo "  -h, --help                  Show this help message"
+    echo ""
+    echo "EXAMPLES:"
+    echo "  $0 .                                    # Process all .doc/.docx in current directory (accept only)"
+    echo "  $0 --include-reject *.docx             # Process with both accept and reject versions"
+    echo "  $0 file1.doc file2.docx               # Process specific files (accept only)"
+    echo "  $0 /path/to/docs/                      # Process all .doc/.docx in directory (accept only)"
+    echo "  $0 --no-libreoffice-fallback *.docx   # Process without LibreOffice fallback"
+    echo ""
+    echo "Output structure:"
+    echo "  md/document-name.docx/   One directory per document (with extension)"
+    echo "    |-- document-name.md            Final version (track-changes accepted) - ALWAYS created"
+    echo "    |-- document-name.reject.md     Original version (track-changes rejected) - only with --include-reject"
+    echo "    |-- document-name.converted.docx Converted .docx file (only for .doc input)"
+    echo "    |-- media/                      Images for accept version"
+    echo "    \`-- media.reject/               Images for reject version (only with --include-reject)"
+    exit 1
+fi
+
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        --no-libreoffice-fallback)
+            USE_LIBREOFFICE_FALLBACK=false
+            shift
+            ;;
+        --include-reject)
+            INCLUDE_REJECT_VERSION=true
+            shift
+            ;;
+        -h|--help)
+            echo "Usage: $0 [OPTIONS] [FILES/DIRECTORIES...]"
+            echo ""
+            echo "Convert .doc/.docx files to markdown (default: accept version only)"
+            echo ""
+            echo "ARGUMENTS:"
+            echo "  FILES/DIRECTORIES        Specific .doc/.docx files or directories to process"
+            echo "                          Use '.' to process current directory"
+            echo "                          This parameter is REQUIRED"
+            echo ""
+            echo "OPTIONS:"
+            echo "  --include-reject            Also create reject version (track-changes rejected)"
+            echo "  --no-libreoffice-fallback   Disable LibreOffice fallback for EMF conversion (default: enabled)"
+            echo "  -h, --help                  Show this help message"
+            echo ""
+            echo "EXAMPLES:"
+            echo "  $0 .                                    # Process all .doc/.docx in current directory (accept only)"
+            echo "  $0 --include-reject *.docx             # Process with both accept and reject versions"
+            echo "  $0 file1.doc file2.docx               # Process specific files (accept only)"
+            echo "  $0 /path/to/docs/                      # Process all .doc/.docx in directory (accept only)"
+            echo "  $0 --no-libreoffice-fallback *.docx   # Process without LibreOffice fallback"
+            echo ""
+            echo "Output structure:"
+            echo "  md/document-name.docx/   One directory per document (with extension)"
+            echo "    |-- document-name.md            Final version (track-changes accepted) - ALWAYS created"
+            echo "    |-- document-name.reject.md     Original version (track-changes rejected) - only with --include-reject"
+            echo "    |-- document-name.converted.docx Converted .docx file (only for .doc input)"
+            echo "    |-- media/                      Images for accept version"
+            echo "    \`-- media.reject/               Images for reject version (only with --include-reject)"
+            exit 0
+            ;;
+        --*)
+            echo "Unknown option: $1"
+            echo "Use --help for usage information"
+            exit 1
+            ;;
+        *)
+            # Non-option argument - treat as file/directory
+            FILES_TO_PROCESS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# Function to collect .doc and .docx files to process
+collect_word_files() {
+    local files_list=()
+    
+    # Check if any files/directories were specified
+    if [[ ${#FILES_TO_PROCESS[@]} -eq 0 ]]; then
+        echo "❌ ERROR: No files or directories specified!"
+        echo "Use '$0 .' to process current directory, or specify specific files/directories."
+        echo "Use '$0 --help' for usage information."
+        exit 1
+    fi
+    
+    # Process specified files/directories
+    for item in "${FILES_TO_PROCESS[@]}"; do
+        if [[ -f "$item" ]]; then
+            # It's a file
+            if [[ "$item" == *.doc || "$item" == *.docx ]]; then
+                # Skip Word temporary files
+                case "$(basename "$item")" in
+                    \~\$*)
+                        echo "Skipping temporary file: $item (Word temp file)"
+                        ;;
+                    *)
+                        files_list+=("$item")
+                        ;;
+                esac
+            else
+                echo "Warning: $item is not a .doc/.docx file, skipping"
+            fi
+        elif [[ -d "$item" ]]; then
+            # It's a directory - find all .doc and .docx files in it
+            echo "Processing directory: $item"
+            while IFS= read -r -d '' word_file; do
+                # Skip Word temporary files
+                case "$(basename "$word_file")" in
+                    \~\$*)
+                        echo "Skipping temporary file: $word_file (Word temp file)"
+                        ;;
+                    *)
+                        files_list+=("$word_file")
+                        ;;
+                esac
+            done < <(find "$item" \( -name "*.doc" -o -name "*.docx" \) -type f -print0)
+        else
+            echo "Warning: $item not found, skipping"
+        fi
+    done
+    
+    if [[ ${#files_list[@]} -eq 0 ]]; then
+        echo "No .doc/.docx files found to process!"
+        exit 1
+    fi
+    
+    echo "Found ${#files_list[@]} Word document(s) to process:"
+    printf "  %s\n" "${files_list[@]}"
+    echo ""
+    
+    # Return the list via global variable
+    WORD_FILES_LIST=("${files_list[@]}")
+}
+
+# Function to check required dependencies
+check_dependencies() {
+    local missing_critical=()
+    local missing_optional=()
+    
+    echo "Checking dependencies..."
+    
+    # Critical dependencies (always required)
+    if ! command -v pandoc &> /dev/null; then
+        missing_critical+=("pandoc")
+        echo "  ✗ pandoc: NOT FOUND"
+    else
+        echo "  ✓ pandoc: $(pandoc --version | head -1)"
+    fi
+    
+    if ! command -v convert &> /dev/null; then
+        missing_critical+=("imagemagick")
+        echo "  ✗ convert (ImageMagick): NOT FOUND"
+    else
+        echo "  ✓ convert (ImageMagick): $(convert --version | head -1 | cut -d' ' -f1-3)"
+    fi
+    
+    # LibreOffice dependency (required by default, optional with --no-libreoffice-fallback)
+    if ! command -v libreoffice &> /dev/null; then
+        if [[ "$USE_LIBREOFFICE_FALLBACK" == "true" ]]; then
+            missing_critical+=("libreoffice")
+            echo "  ✗ libreoffice: NOT FOUND (required for EMF fallback conversion)"
+        else
+            missing_optional+=("libreoffice")
+            echo "  ⚠ libreoffice: NOT FOUND (optional, EMF fallback disabled with --no-libreoffice-fallback)"
+        fi
+    else
+        echo "  ✓ libreoffice: $(libreoffice --version | head -1)"
+    fi
+    
+    # Handle missing critical dependencies
+    if [[ ${#missing_critical[@]} -gt 0 ]]; then
+        echo ""
+        echo "❌ ERROR: Missing required dependencies:"
+        for dep in "${missing_critical[@]}"; do
+            case $dep in
+                pandoc)
+                    echo "   Install with: sudo apt install pandoc  # or brew install pandoc"
+                    ;;
+                imagemagick)
+                    echo "   Install with: sudo apt install imagemagick  # or brew install imagemagick"
+                    ;;
+                libreoffice)
+                    echo "   Install with: sudo apt install libreoffice  # or brew install --cask libreoffice"
+                    ;;
+            esac
+        done
+        exit 1
+    fi
+    
+    # Handle optional dependencies
+    if [[ ${#missing_optional[@]} -gt 0 ]]; then
+        echo ""
+        echo "⚠️  Optional dependencies missing:"
+        for dep in "${missing_optional[@]}"; do
+            case $dep in
+                libreoffice)
+                    echo "   LibreOffice is used as fallback for complex EMF files (disabled with --no-libreoffice-fallback)"
+                    echo "   Install with: sudo apt install libreoffice  # or brew install --cask libreoffice"
+                    echo "   Or run script with --no-libreoffice-fallback to skip EMF fallback conversion"
+                    ;;
+            esac
+        done
+    fi
+    
+    echo ""
+}
+
+# Check dependencies before proceeding
+check_dependencies
+
+# Collect files to process
+collect_word_files
+
+# Array to track files generated in this session
+GENERATED_FILES_THIS_SESSION=()
+
+# Function to convert .doc to .docx using LibreOffice
+convert_doc_to_docx() {
+	local doc_file="$1"
+	local target_dir="$2"
+	local temp_dir="temp_conversion_$$"
+	
+	echo "  🔄 Converting .doc to .docx using LibreOffice..." >&2
+	
+	# Create temporary directory
+	mkdir -p "$temp_dir"
+	
+	# Convert using LibreOffice (redirect both stdout and stderr to avoid contamination)
+	if libreoffice --headless --convert-to docx --outdir "$temp_dir" "$doc_file" >/dev/null 2>&1; then
+		# Find the converted file
+		local base_name="$(basename "$doc_file" .doc)"
+		local temp_docx_file="$temp_dir/$base_name.docx"
+		
+		if [[ -f "$temp_docx_file" ]]; then
+			# Move converted file to target directory with .converted.docx extension
+			local target_docx_file="$target_dir/$base_name.converted.docx"
+			mv "$temp_docx_file" "$target_docx_file"
+			
+			echo "  ✓ Conversion successful: .doc → .docx" >&2
+			echo "  📁 Saved as: $(basename "$target_docx_file")" >&2
+			
+			# Track the generated .converted.docx file
+			GENERATED_FILES_THIS_SESSION+=("$target_docx_file")
+			
+			# Clean up temp directory
+			rm -rf "$temp_dir"
+			
+			# Return the path to the converted file (only this goes to stdout)
+			echo "$target_docx_file"
+			return 0
+		else
+			echo "  ✗ LibreOffice conversion failed: output file not found" >&2
+			rm -rf "$temp_dir"
+			return 1
+		fi
+	else
+		echo "  ✗ LibreOffice conversion failed" >&2
+		rm -rf "$temp_dir"
+		return 1
+	fi
+}
+
+# Function to convert Word document with common pandoc options
+convert_document() {
+	local input_file="$1"
+	local output_dir="$2"
+	local track_changes="$3"
+	local output_file="$4"
+	local actual_input_file="$input_file"
+	
+	# Handle .doc files by converting to .docx first
+	# Use basename for pattern matching to handle full paths
+	local base_file="$(basename "$input_file")"
+	debug_echo "input_file='$input_file'"
+	debug_echo "base_file='$base_file'"
+	
+	if [[ "$base_file" == *.doc && "$base_file" != *.docx ]]; then
+		echo "  📝 .doc file detected, conversion required..."
+		# Get the document directory (parent of media directory)
+		local doc_directory="$(dirname "$output_dir")"
+		debug_echo "doc_directory='$doc_directory'"
+		
+		actual_input_file=$(convert_doc_to_docx "$input_file" "$doc_directory")
+		if [[ $? -ne 0 ]]; then
+			echo "  ❌ Failed to convert .doc file"
+			return 1
+		fi
+		debug_echo "actual_input_file='$actual_input_file'"
+		# No need to clean up temp_conversion_dir since it's handled in convert_doc_to_docx
+	fi
+	
+	# Determine input format (always docx after conversion)
+	local input_format="docx"
+	
+	# Extract media to a temporary location first, then move to correct location
+	local temp_media_dir="temp_media_$$"
+	
+	echo "  🔄 Converting to Markdown with pandoc..."
+	debug_echo "Running pandoc with:"
+	debug_echo "  input_format='$input_format'"
+	debug_echo "  actual_input_file='$actual_input_file'"
+	debug_echo "  output_file='$output_file'"
+	debug_echo "  temp_media_dir='$temp_media_dir'"
+	debug_echo "  track_changes='$track_changes'"
+	
+	# Check if input file exists
+	if [[ ! -f "$actual_input_file" ]]; then
+		echo "  ❌ Input file not found: $actual_input_file"
+		return 1
+	fi
+	
+	# Run pandoc with error capture if debug mode
+	local pandoc_error=""
+	if [[ "$DEBUG_MODE" == "1" ]]; then
+		pandoc_error=$(pandoc -f "$input_format" -t markdown \
+			--extract-media="./$temp_media_dir" \
+			--wrap=none \
+			--markdown-headings=atx \
+			--track-changes="$track_changes" \
+			--preserve-tabs \
+			--reference-links \
+			"$actual_input_file" -o "$output_file" 2>&1)
+		local pandoc_exit_code=$?
+	else
+		pandoc -f "$input_format" -t markdown \
+			--extract-media="./$temp_media_dir" \
+			--wrap=none \
+			--markdown-headings=atx \
+			--track-changes="$track_changes" \
+			--preserve-tabs \
+			--reference-links \
+			"$actual_input_file" -o "$output_file" 2>/dev/null
+		local pandoc_exit_code=$?
+	fi
+	
+	if [[ $pandoc_exit_code -eq 0 ]]; then
+		
+		echo "  ✓ Pandoc conversion successful"
+		
+		# Track the generated markdown file
+		GENERATED_FILES_THIS_SESSION+=("$output_file")
+		
+		# Move extracted media to the correct directory if it exists
+		if [[ -d "$temp_media_dir/media" ]]; then
+			mkdir -p "$output_dir"
+			mv "$temp_media_dir/media"/* "$output_dir/" 2>/dev/null || true
+			rm -rf "$temp_media_dir"
+			
+			# Update markdown file to remove double 'media' path
+			local media_dir_name="$(basename "$output_dir")"
+			sed -i "s|$temp_media_dir/media/|$media_dir_name/|g" "$output_file"
+		fi
+		
+		# Note: No cleanup needed for .docx conversion as it's saved in target directory
+		
+		return 0
+	else
+		echo "  ❌ Pandoc conversion failed"
+		if [[ "$DEBUG_MODE" == "1" && -n "$pandoc_error" ]]; then
+			echo "  🔍 Pandoc error output:" >&2
+			echo "$pandoc_error" | sed 's/^/    /' >&2
+		fi
+		
+		# Clean up temporary files
+		rm -rf "$temp_media_dir" 2>/dev/null || true
+		
+		return 1
+	fi
+}
+
+# Create main md directory
+mkdir -p md
+
+if [[ "$INCLUDE_REJECT_VERSION" == "true" ]]; then
+    echo "Converting documents with both accept and reject versions..."
+else
+    echo "Converting documents (accept version only)..."
+fi
+echo ""
+
+# Clean up and process each document in its own directory
+echo "Processing documents..."
+for F in "${WORD_FILES_LIST[@]}"; do
+	# Get base name with extension (preserving .doc/.docx)
+	base_with_ext="$(basename "$F")"
+	# Get base name without extension for file naming
+	base_no_ext="${base_with_ext%.docx}"
+	base_no_ext="${base_no_ext%.doc}"
+	
+	# Create document-specific directory with extension included
+	doc_dir="md/$base_with_ext"
+	
+	echo "Processing $base_with_ext ..."
+	
+	# Remove entire document directory if it exists to ensure clean rebuild
+	if [[ -d "$doc_dir" ]]; then
+		rm -rf "$doc_dir"
+		echo "  Removed existing directory: $doc_dir"
+	fi
+	
+	# Create fresh document directory
+	mkdir -p "$doc_dir"
+	
+	# Convert with track-changes=accept
+	if convert_document "$F" "$doc_dir/media" "accept" "$doc_dir/$base_no_ext.md"; then
+		echo "  ✓ Accept version: $F -> $doc_dir/$base_no_ext.md"
+		
+		# Convert with track-changes=reject only if requested and accept succeeded
+		if [[ "$INCLUDE_REJECT_VERSION" == "true" ]]; then
+			if convert_document "$F" "$doc_dir/media.reject" "reject" "$doc_dir/$base_no_ext.reject.md"; then
+				echo "  ✓ Reject version: $F -> $doc_dir/$base_no_ext.reject.md"
+			else
+				echo "  ❌ Reject version failed: $F"
+			fi
+		fi
+	else
+		echo "  ❌ Accept version failed: $F"
+		echo "  🗑️  Removing empty directory: $doc_dir"
+		rm -rf "$doc_dir"
+	fi
+	
+	echo ""
+done
+
+echo "Conversion completed!"
+echo ""
+echo "Generated files in this session:"
+if [[ ${#GENERATED_FILES_THIS_SESSION[@]} -eq 0 ]]; then
+    echo "  No files generated"
+else
+    for file in "${GENERATED_FILES_THIS_SESSION[@]}"; do
+        echo "  $file"
+    done
+fi
+
+# Function to convert EMF files with ImageMagick
+convert_emf_imagemagick() {
+    local success_count=0
+    local fail_count=0
+    
+    echo "Converting EMF files with ImageMagick..."
+    
+    # Clean up any previous failed file list
+    rm -f /tmp/failed_emf.txt
+    
+    while IFS= read -r emf; do
+        png="${emf%.emf}.png"
+        if [[ ! -f "$emf" ]]; then
+            echo "  ✗ File not found: $(basename "$emf")"
+            ((fail_count++))
+            continue
+        fi
+        
+        if convert "$emf" "$png" 2>/dev/null; then
+            echo "  ✓ $(basename "$emf") → $(basename "$png")"
+            ((success_count++))
+        else
+            echo "  ✗ ImageMagick failed: $(basename "$emf")"
+            echo "$emf" >> /tmp/failed_emf.txt
+            ((fail_count++))
+        fi
+    done < <(find md/ -name "*.emf")
+    
+    echo "ImageMagick results: $success_count successful, $fail_count failed"
+    return $fail_count
+}
+
+# Function to convert failed EMF files with LibreOffice
+convert_emf_libreoffice_fallback() {
+    if [[ -f /tmp/failed_emf.txt ]]; then
+        echo ""
+        echo "Converting failed EMF files with LibreOffice..."
+        while read emf; do
+            if [[ -f "$emf" ]]; then
+                dir="$(dirname "$emf")"
+                if libreoffice --headless --convert-to png --outdir "$dir" "$emf" 2>/dev/null; then
+                    echo "  ✓ LibreOffice: $(basename "$emf") → $(basename "${emf%.emf}.png")"
+                else
+                    echo "  ✗ LibreOffice also failed: $(basename "$emf")"
+                fi
+            fi
+        done < /tmp/failed_emf.txt
+        rm -f /tmp/failed_emf.txt
+    fi
+}
+
+echo ""
+echo "Converting EMF files to PNG..."
+emf_count=$(find md/ -name "*.emf" | wc -l)
+if [[ $emf_count -gt 0 ]]; then
+    echo "Found $emf_count EMF files to convert..."
+    
+    # First pass: ImageMagick
+    convert_emf_imagemagick
+    imagemagick_failed=$?
+    
+    # Second pass: LibreOffice fallback (if enabled)
+    if [[ "$USE_LIBREOFFICE_FALLBACK" == "true" ]]; then
+        if [[ $imagemagick_failed -gt 0 ]]; then
+            convert_emf_libreoffice_fallback
+        else
+            echo "All EMF files converted successfully with ImageMagick!"
+        fi
+    elif [[ $imagemagick_failed -gt 0 ]]; then
+        failed_count=$(wc -l < /tmp/failed_emf.txt 2>/dev/null || echo "0")
+        if [[ $failed_count -gt 0 ]]; then
+            echo ""
+            echo "⚠️  $failed_count EMF file(s) failed with ImageMagick."
+            echo "   LibreOffice fallback would retry these files (enabled by default)."
+            echo "   Use --no-libreoffice-fallback to disable this behavior."
+        fi
+        rm -f /tmp/failed_emf.txt
+    else
+        echo "All EMF files converted successfully with ImageMagick!"
+    fi
+    
+    echo "✓ EMF conversion completed!"
+    
+    # Update Markdown references from .emf to .png
+    echo ""
+    echo "Updating Markdown references from .emf to .png..."
+    updated_files=0
+    
+    # Update all markdown files in the new structure
+    while IFS= read -r -d '' md_file; do
+        if grep -q "\.emf" "$md_file"; then
+            sed -i 's/\.emf/\.png/g' "$md_file"
+            echo "  ✓ Updated references in $md_file"
+            ((updated_files++))
+        fi
+    done < <(find md/ -name "*.md" -type f -print0)
+    
+    echo "Updated $updated_files markdown file(s) with new image references."
+else
+    echo "No EMF files found."
+fi
