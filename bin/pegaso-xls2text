@@ -1,0 +1,257 @@
+#!/usr/bin/env python3
+"""
+Script per convertire file Excel (.xlsx/.xls) con più sheet in formato CSV + Markdown
+Compatibile con pegaso-doc2text per struttura directory uniforme
+
+Uso: pegaso-xls2text [file.xlsx] [--format csv|md|both]
+Output: md/nomefile.xlsx/ con tutti i sheet convertiti
+"""
+
+import pandas as pd
+import os
+import sys
+import argparse
+from pathlib import Path
+import re
+import shutil
+
+class XLSXConverter:
+    def __init__(self, format_type='both'):
+        self.format_type = format_type
+        
+    def sanitize_filename(self, filename):
+        """Pulisce il nome del file rimuovendo caratteri non validi"""
+        return re.sub(r'[^\w\s-]', '_', filename).strip()
+    
+    def convert_xlsx_to_csv(self, xlsx_file, sheet_name, df, output_folder):
+        """Converte un singolo sheet in CSV"""
+        safe_sheet_name = self.sanitize_filename(sheet_name)
+        csv_file = os.path.join(output_folder, f"{safe_sheet_name}.csv")
+        df.to_csv(csv_file, index=False, encoding='utf-8')
+        return csv_file
+    
+    def convert_xlsx_to_markdown(self, xlsx_file, sheet_name, df, output_folder):
+        """Converte un singolo sheet in Markdown con tabella formattata"""
+        safe_sheet_name = self.sanitize_filename(sheet_name)
+        md_file = os.path.join(output_folder, f"{safe_sheet_name}.md")
+        
+        with open(md_file, 'w', encoding='utf-8') as f:
+            # Header del file
+            f.write(f"# {sheet_name}\n\n")
+            f.write(f"**File sorgente**: {os.path.basename(xlsx_file)}\n")
+            f.write(f"**Sheet**: {sheet_name}\n")
+            f.write(f"**Righe**: {len(df)}\n")
+            f.write(f"**Colonne**: {len(df.columns)}\n\n")
+            
+            # Tabella in formato Markdown
+            if not df.empty:
+                # Sostituisci i valori NaN con stringhe vuote per una migliore leggibilità
+                df_clean = df.fillna('')
+                
+                # Header della tabella
+                headers = "| " + " | ".join(str(col) for col in df_clean.columns) + " |\n"
+                separator = "| " + " | ".join("---" for _ in df_clean.columns) + " |\n"
+                
+                f.write(headers)
+                f.write(separator)
+                
+                # Righe della tabella (limitiamo a 1000 righe per file molto grandi)
+                max_rows = min(1000, len(df_clean))
+                for _, row in df_clean.head(max_rows).iterrows():
+                    row_str = "| " + " | ".join(str(cell).replace('|', '\\|') for cell in row) + " |\n"
+                    f.write(row_str)
+                
+                if len(df_clean) > 1000:
+                    f.write(f"\n*Nota: Mostrate solo le prime 1000 righe di {len(df_clean)}*\n")
+            else:
+                f.write("*Sheet vuoto*\n")
+        
+        return md_file
+    
+    def convert_file(self, xlsx_file):
+        """Converte un file XLSX completo"""
+        if not os.path.exists(xlsx_file):
+            print(f"❌ Errore: File {xlsx_file} non trovato")
+            return False
+        
+        try:
+            # Carica il file Excel
+            print(f"📖 Caricamento file: {xlsx_file}")
+            xls = pd.ExcelFile(xlsx_file)
+            
+            # Crea struttura directory compatibile con pegaso-doc2text
+            # Include l'estensione nel nome della directory come doc2text
+            base_name_with_ext = os.path.basename(xlsx_file)
+            
+            # Crea directory md/ se non esiste
+            md_base_dir = "md"
+            os.makedirs(md_base_dir, exist_ok=True)
+            
+            # Directory specifica per questo file (con estensione)
+            output_folder = os.path.join(md_base_dir, base_name_with_ext)
+            
+            # Rimuovi completamente la directory esistente per rebuild pulito
+            if os.path.exists(output_folder):
+                shutil.rmtree(output_folder)
+                print(f"🗑️  Rimossa directory esistente: {output_folder}")
+            
+            os.makedirs(output_folder, exist_ok=True)
+            print(f"📁 Cartella di output: {output_folder}")
+            
+            # Crea file indice
+            index_file = os.path.join(output_folder, "README.md")
+            converted_files = []
+            
+            with open(index_file, 'w', encoding='utf-8') as f:
+                f.write(f"# Conversione di {os.path.basename(xlsx_file)}\n\n")
+                f.write(f"**File originale**: {xlsx_file}\n")
+                f.write(f"**Data conversione**: {pd.Timestamp.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                f.write(f"**Numero di sheet**: {len(xls.sheet_names)}\n\n")
+                f.write("## Sheet convertiti\n\n")
+            
+            # Itera su ogni sheet
+            for i, sheet_name in enumerate(xls.sheet_names, 1):
+                print(f"🔄 Elaborazione sheet {i}/{len(xls.sheet_names)}: {sheet_name}")
+                
+                try:
+                    df = xls.parse(sheet_name)
+                    files_created = []
+                    
+                    # Conversione CSV
+                    if self.format_type in ['csv', 'both']:
+                        csv_file = self.convert_xlsx_to_csv(xlsx_file, sheet_name, df, output_folder)
+                        files_created.append(('CSV', os.path.basename(csv_file)))
+                        print(f"  ✅ CSV creato: {os.path.basename(csv_file)}")
+                    
+                    # Conversione Markdown
+                    if self.format_type in ['md', 'both']:
+                        md_file = self.convert_xlsx_to_markdown(xlsx_file, sheet_name, df, output_folder)
+                        files_created.append(('MD', os.path.basename(md_file)))
+                        print(f"  ✅ Markdown creato: {os.path.basename(md_file)}")
+                    
+                    converted_files.append((sheet_name, df.shape, files_created))
+                    
+                except Exception as e:
+                    print(f"  ❌ Errore nel sheet '{sheet_name}': {e}")
+                    continue
+            
+            # Aggiorna file indice
+            with open(index_file, 'a', encoding='utf-8') as f:
+                for sheet_name, shape, files in converted_files:
+                    f.write(f"### {sheet_name}\n")
+                    f.write(f"- **Dimensioni**: {shape[0]} righe × {shape[1]} colonne\n")
+                    f.write("- **File generati**:\n")
+                    for format_type, filename in files:
+                        f.write(f"  - [{format_type}](./{filename})\n")
+                    f.write("\n")
+            
+            print(f"\n🎉 Conversione completata!")
+            print(f"📁 File salvati in: {output_folder}")
+            print(f"📋 Indice: {index_file}")
+            print(f"\nDirectory structure:")
+            print(f"md/")
+            print(f"`-- {base_name_with_ext}/")
+            print(f"    |-- README.md       # Indice dei contenuti")
+            for sheet_name, _, _ in converted_files:
+                safe_name = self.sanitize_filename(sheet_name)
+                if self.format_type in ['md', 'both']:
+                    print(f"    |-- {safe_name}.md")
+                if self.format_type in ['csv', 'both']:
+                    print(f"    `-- {safe_name}.csv")
+            return True
+            
+        except Exception as e:
+            print(f"❌ Errore durante la conversione: {e}")
+            return False
+
+def main():
+    parser = argparse.ArgumentParser(description='Converte file XLSX in CSV e/o Markdown (compatibile con pegaso-doc2text)')
+    parser.add_argument('xlsx_files', nargs='*', help='File Excel (.xlsx/.xls) da convertire (RICHIESTO)')
+    parser.add_argument('--format', '-f', choices=['csv', 'md', 'both'], default='md',
+                       help='Formato di output: csv, md, o both (default: md)')
+    parser.add_argument('--scan', '-s', action='store_true', 
+                       help='Scansiona la cartella corrente per file Excel')
+    
+    args = parser.parse_args()
+    
+    # Se nessun argomento, mostra help (compatibile con pegaso-doc2text)
+    if not args.xlsx_files and not args.scan:
+        parser.print_help()
+        print("\nOutput structure:")
+        print("  md/nomefile.xlsx/    Una directory per file Excel (con estensione)")
+        print("    |-- sheet1.md      Sheet convertiti in Markdown")
+        print("    |-- sheet2.md")
+        print("    |-- sheet1.csv     File CSV (solo con --format csv o both)")
+        print("    `-- README.md       Indice dei contenuti")
+        print("\nExamples:")
+        print("  pegaso-xls2text data.xlsx              # Converti in MD solo")
+        print("  pegaso-xls2text file1.xlsx file2.xlsx # Converti multipli file")
+        print("  pegaso-xls2text data.xlsx --format both # Converti in MD + CSV")
+        print("  pegaso-xls2text --scan                 # Scansiona directory")
+        sys.exit(1)
+    
+    converter = XLSXConverter(args.format)
+    
+    if args.scan:
+        # Scansiona cartella corrente per file Excel
+        xlsx_files = list(Path('.').glob('**/*.xlsx')) + list(Path('.').glob('**/*.xls'))
+        if not xlsx_files:
+            print("❌ Nessun file Excel trovato nella cartella corrente")
+            return
+        
+        print(f"📋 Trovati {len(xlsx_files)} file Excel:")
+        for i, file in enumerate(xlsx_files, 1):
+            print(f"  {i}. {file}")
+        
+        choice = input("\nConverti tutti i file? (s/N): ").lower()
+        if choice in ['s', 'si', 'y', 'yes']:
+            for xlsx_file in xlsx_files:
+                converter.convert_file(str(xlsx_file))
+                print("-" * 50)
+    elif args.xlsx_files:
+        # Converti i file specificati
+        processed_files = 0
+        failed_files = 0
+        
+        for xlsx_file in args.xlsx_files:
+            print(f"\n{'='*60}")
+            print(f"Elaborazione file {processed_files + failed_files + 1} di {len(args.xlsx_files)}: {xlsx_file}")
+            print(f"{'='*60}")
+            
+            # Verifica esistenza file
+            if not os.path.exists(xlsx_file):
+                print(f"❌ Errore: File {xlsx_file} non trovato")
+                failed_files += 1
+                continue
+            
+            # Verifica che sia un file Excel
+            if not xlsx_file.lower().endswith(('.xlsx', '.xls')):
+                print(f"❌ Errore: {xlsx_file} non è un file Excel valido (.xlsx/.xls)")
+                failed_files += 1
+                continue
+                
+            # Converti il file
+            if converter.convert_file(xlsx_file):
+                processed_files += 1
+            else:
+                failed_files += 1
+        
+        # Riepilogo finale
+        print(f"\n{'='*60}")
+        print(f"RIEPILOGO CONVERSIONE")
+        print(f"{'='*60}")
+        print(f"✅ File processati con successo: {processed_files}")
+        print(f"❌ File con errori: {failed_files}")
+        print(f"📊 Totale file: {len(args.xlsx_files)}")
+        
+        if failed_files > 0:
+            sys.exit(1)
+    else:
+        # Questo caso non dovrebbe mai accadere grazie al check precedente
+        print("❌ Nessun file specificato")
+        print("Uso: pegaso-xls2text <file1.xlsx> [file2.xlsx ...] [--format md|csv|both]")
+        print("     pegaso-xls2text --scan  # per scansionare la directory")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
