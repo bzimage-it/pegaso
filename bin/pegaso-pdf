@@ -20,7 +20,12 @@ CMD="$1"
 FILE="$2"
 
 function syntax() {
-	echo "sintax: ${PEGASO_SCRIPT_FILE} removepwd|shrink|grayscale <filename>"
+	cat <<EOF
+sintax: 
+  ${PEGASO_SCRIPT_FILE} removepwd|shrink|grayscale <filename>
+  ${PEGASO_SCRIPT_FILE} cat <filename> <page-specs>
+  ${PEGASO_SCRIPT_FILE} merge <output-file> [ <input-file1> ... ]
+EOF
 	
 }
 
@@ -205,6 +210,19 @@ function do_grayscale() {
 	-dBATCH "$FILE"
 }
 
+function do_cat {
+        local FILE="$1"
+	local spec="$2"
+	local b=
+	local t=
+	local s=
+	b="${FILE%.*}"
+	s="${spec// /_}"
+	t="$b.cat:$s.pdf"
+	echo "processing 'cat: $s' ..."
+	pdftk "$FILE" cat "$spec" output "$t" && echo "output file: $t"
+}
+
 if [[ -z $FILE ]]; then
     syntax
     exit 1
@@ -212,15 +230,25 @@ fi
 echo "CMD=$CMD"
 case "$CMD" in
     removepwd)
+    	shift
+	shift
 	removepwd "$FILE"
 	;;
     shrink)
 	shift
+	shift
 	do_shrink "$FILE" $*
 	;;
     grayscale)
+    	shift
+	shift
 	do_grayscale "$FILE"
 	;;
+    cat)
+    	shift
+	shift
+    	do_cat "$FILE" $*
+    	;;
     *)
 	echo "unknown command: $CMD"
 	syntax
