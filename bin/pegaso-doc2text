@@ -244,6 +244,8 @@ collect_word_files
 
 # Array to track files generated in this session
 GENERATED_FILES_THIS_SESSION=()
+# Array to track document directories processed in this session
+PROCESSED_DOC_DIRECTORIES=()
 
 # Function to convert .doc to .docx using LibreOffice
 convert_doc_to_docx() {
@@ -436,6 +438,9 @@ for F in "${WORD_FILES_LIST[@]}"; do
 	if convert_document "$F" "$doc_dir/media" "accept" "$doc_dir/$base_no_ext.md"; then
 		echo "  ✓ Accept version: $F -> $doc_dir/$base_no_ext.md"
 		
+		# Track this document directory for EMF processing
+		PROCESSED_DOC_DIRECTORIES+=("$doc_dir")
+		
 		# Convert with track-changes=reject only if requested and accept succeeded
 		if [[ "$INCLUDE_REJECT_VERSION" == "true" ]]; then
 			if convert_document "$F" "$doc_dir/media.reject" "reject" "$doc_dir/$base_no_ext.reject.md"; then
@@ -474,23 +479,26 @@ convert_emf_imagemagick() {
     # Clean up any previous failed file list
     rm -f /tmp/failed_emf.txt
     
-    while IFS= read -r emf; do
-        png="${emf%.emf}.png"
-        if [[ ! -f "$emf" ]]; then
-            echo "  ✗ File not found: $(basename "$emf")"
-            ((fail_count++))
-            continue
-        fi
-        
-        if convert "$emf" "$png" 2>/dev/null; then
-            echo "  ✓ $(basename "$emf") → $(basename "$png")"
-            ((success_count++))
-        else
-            echo "  ✗ ImageMagick failed: $(basename "$emf")"
-            echo "$emf" >> /tmp/failed_emf.txt
-            ((fail_count++))
-        fi
-    done < <(find md/ -name "*.emf")
+    # Only process EMF files from directories processed in this session
+    for doc_dir in "${PROCESSED_DOC_DIRECTORIES[@]}"; do
+        while IFS= read -r -d '' emf; do
+            png="${emf%.emf}.png"
+            if [[ ! -f "$emf" ]]; then
+                echo "  ✗ File not found: $(basename "$emf")"
+                ((fail_count++))
+                continue
+            fi
+            
+            if convert "$emf" "$png" 2>/dev/null; then
+                echo "  ✓ $(basename "$emf") → $(basename "$png")"
+                ((success_count++))
+            else
+                echo "  ✗ ImageMagick failed: $(basename "$emf")"
+                echo "$emf" >> /tmp/failed_emf.txt
+                ((fail_count++))
+            fi
+        done < <(find "$doc_dir" -name "*.emf" -print0 2>/dev/null)
+    done
     
     echo "ImageMagick results: $success_count successful, $fail_count failed"
     return $fail_count
@@ -517,9 +525,14 @@ convert_emf_libreoffice_fallback() {
 
 echo ""
 echo "Converting EMF files to PNG..."
-emf_count=$(find md/ -name "*.emf" | wc -l)
+# Count EMF files only in directories processed in this session
+emf_count=0
+for doc_dir in "${PROCESSED_DOC_DIRECTORIES[@]}"; do
+    emf_count=$((emf_count + $(find "$doc_dir" -name "*.emf" 2>/dev/null | wc -l)))
+done
+
 if [[ $emf_count -gt 0 ]]; then
-    echo "Found $emf_count EMF files to convert..."
+    echo "Found $emf_count EMF files to convert in processed documents..."
     
     # First pass: ImageMagick
     convert_emf_imagemagick
@@ -552,14 +565,16 @@ if [[ $emf_count -gt 0 ]]; then
     echo "Updating Markdown references from .emf to .png..."
     updated_files=0
     
-    # Update all markdown files in the new structure
-    while IFS= read -r -d '' md_file; do
-        if grep -q "\.emf" "$md_file"; then
-            sed -i 's/\.emf/\.png/g' "$md_file"
-            echo "  ✓ Updated references in $md_file"
-            ((updated_files++))
-        fi
-    done < <(find md/ -name "*.md" -type f -print0)
+    # Update markdown files only in directories processed in this session
+    for doc_dir in "${PROCESSED_DOC_DIRECTORIES[@]}"; do
+        while IFS= read -r -d '' md_file; do
+            if grep -q "\.emf" "$md_file"; then
+                sed -i 's/\.emf/\.png/g' "$md_file"
+                echo "  ✓ Updated references in $(basename "$md_file")"
+                ((updated_files++))
+            fi
+        done < <(find "$doc_dir" -name "*.md" -type f -print0 2>/dev/null)
+    done
     
     echo "Updated $updated_files markdown file(s) with new image references."
 else
