@@ -77,35 +77,61 @@ case "$cmd" in
 	remove-unversioned-all)
 	    svn cleanup --remove-unversioned --remove-ignored
 	    ;;
-	co-smart-1)
+	co-smart-1|co-smart1)
 	    svn_co $*
  	    ;;
-	co-smart-2)
+	co-smart-2|co-smart2)
 	    svn update --set-depth immediates .
  	    ;;
-	co-smart-3)
+	co-smart-3|co-smart3)
 	    svn update --set-depth infinity .
 	    ;;
 	co-smart)
 	    svn_co $*
-	    while read -p "iterate subpath: > " SPATH; do
-	    	cd $SPATH
-	    	if [ $? == 0 ]; then
-	    		echo "[svn list]"
-	    		svn list
-	    		echo "[end svn list]"
-	    		echo
-	    		echo "pwd: "$(pwd)
-	    		read -p "go inside dir ("." to get them all as immediates; "!" to get infinity pwd): >" GO
-	    		if [ "$GO" = "!" ]; then
-	    			 svn update --set-depth infinity .
-	    			 break; # exit while iteration
-	    		else
-		    		svn update --set-depth immediates $GO
-		    	fi
-	    	else
-	    		ls -l
-	    	fi
+	    # Enter the newly created directory
+	    REPO_NAME="$(basename "$1")"
+	    if [ -d "$REPO_NAME" ]; then
+	    	cd "$REPO_NAME" || { echo "Error: Cannot enter directory $REPO_NAME"; exit 1; }
+	    	echo "Entered directory: $REPO_NAME"
+	    else
+	    	echo "Warning: Directory $REPO_NAME not found, staying in current directory"
+	    fi
+	    while true; do
+	    	echo
+	    	echo "=== Current directory: $(pwd) ==="
+	    	echo "[svn list]"
+	    	svn list
+	    	echo "[end svn list]"
+	    	echo
+			pwd
+	    	read -p "Choose: <path> (enter dir), '.' (get immediates here), '!' (get infinity here), 'q' (quit): > " CHOICE
+	    	
+	    	case "$CHOICE" in
+	    		".")
+	    			echo "Getting all directories as immediates..."
+	    			svn update --set-depth immediates .
+	    			;;
+	    		"!")
+	    			echo "Getting all directories with full recursion..."
+	    			svn update --set-depth infinity .
+	    			break
+	    			;;
+	    		"q"|"quit")
+	    			echo "Exiting co-smart."
+	    			break
+	    			;;
+	    		"")
+	    			echo "Empty input, please choose an option."
+	    			;;
+	    		*)
+	    			if cd "$CHOICE" 2>/dev/null; then
+	    				echo "Entered directory: $CHOICE"
+	    			else
+	    				echo "Error: Cannot enter directory '$CHOICE'"
+	    				ls -l
+	    			fi
+	    			;;
+	    	esac
 	    done
 	    ls -l
 	    echo "you may want to cd into:"
