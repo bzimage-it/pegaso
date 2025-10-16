@@ -1,0 +1,309 @@
+#!/bin/bash
+
+# Script to analyze files by type (extension) in a directory
+# Provides statistics on file count and total size for each extension
+
+# Default variables
+SORT_BY="extension"  # extension, files, size
+REVERSE_ORDER=0
+LIMIT=0
+declare -a TARGETS=()
+INPUT_FILE=""
+
+# Help function
+show_help() {
+    cat << EOF
+Usage: $0 [FILES/DIRECTORIES...] [OPTIONS]
+
+Recursively analyzes directories and files, providing statistics by file type.
+
+FILES/DIRECTORIES:
+    Files or directories to analyze (default: current directory)
+    - If a directory: recursively analyzed
+    - If a file: added to statistics
+    - Multiple paths can be specified
+
+OPTIONS:
+    -i FILE     Read list of files/directories from FILE (one per line)
+    -se, -st    Sort by extension/type (default)
+    -sf         Sort by number of files
+    -ss         Sort by total size
+    -r          Reverse order (descending)
+    -n NUM      Show only first NUM elements
+    -h          Show this help
+
+EXAMPLES:
+    $0                              # Analyze current directory
+    $0 dir1/ dir2/ file.txt         # Analyze multiple paths
+    $0 -sf -r                       # Sort by file count, descending
+    $0 -ss -n 10                    # Show top 10 by size
+    $0 -i filelist.txt -ss -r       # Read paths from file, sort by size
+    $0 *.csv *.txt -sf              # Analyze specific file types
+
+EOF
+    exit 0
+}
+
+# Parse arguments
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -se|-st)
+            SORT_BY="extension"
+            shift
+            ;;
+        -sf)
+            SORT_BY="files"
+            shift
+            ;;
+        -ss)
+            SORT_BY="size"
+            shift
+            ;;
+        -r)
+            REVERSE_ORDER=1
+            shift
+            ;;
+        -n)
+            LIMIT="$2"
+            shift 2
+            ;;
+        -i)
+            INPUT_FILE="$2"
+            shift 2
+            ;;
+        -h|--help)
+            show_help
+            ;;
+        -*)
+            echo "Unrecognized option: $1" >&2
+            echo "Use -h for help" >&2
+            exit 1
+            ;;
+        *)
+            TARGETS+=("$1")
+            shift
+            ;;
+    esac
+done
+
+# If input file specified, read targets from it
+if [ -n "$INPUT_FILE" ]; then
+    if [ ! -f "$INPUT_FILE" ]; then
+        echo "Error: Input file '$INPUT_FILE' does not exist" >&2
+        exit 1
+    fi
+    
+    while IFS= read -r line; do
+        # Skip empty lines and comments
+        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
+        TARGETS+=("$line")
+    done < "$INPUT_FILE"
+fi
+
+# If no targets specified, use current directory
+if [ ${#TARGETS[@]} -eq 0 ]; then
+    TARGETS=(".")
+fi
+
+echo "File Statistics Analysis"
+echo "================================================"
+echo "Analyzing ${#TARGETS[@]} target(s):"
+for target in "${TARGETS[@]}"; do
+    if [ -d "$target" ]; then
+        echo "  [DIR]  $target"
+    elif [ -f "$target" ]; then
+        echo "  [FILE] $target"
+    else
+        echo "  [NOT FOUND] $target" >&2
+    fi
+done
+echo ""
+
+# Associative arrays to count files and sizes by extension
+declare -A file_count
+declare -A file_size
+
+# Function to process a single file
+process_file() {
+    local file="$1"
+    
+    # Get file extension
+    filename=$(basename "$file")
+    
+    # Extract extension (everything after the last dot)
+    if [[ "$filename" == *.* ]]; then
+        extension="${filename##*.}"
+        # Convert to lowercase for consistency
+        extension="${extension,,}"
+    else
+        # File without extension
+        extension="(no extension)"
+    fi
+    
+    # Get file size in bytes
+    size=$(stat -c "%s" "$file" 2>/dev/null)
+    
+    # Skip if stat failed
+    if [ -z "$size" ]; then
+        return
+    fi
+    
+    # Increment counter and total size
+    ((file_count[$extension]++))
+    ((file_size[$extension]+=$size))
+}
+
+# Process each target
+for target in "${TARGETS[@]}"; do
+    if [ -d "$target" ]; then
+        # Process directory recursively
+        while IFS= read -r -d '' file; do
+            process_file "$file"
+        done < <(find "$target" -type f -print0 2>/dev/null)
+    elif [ -f "$target" ]; then
+        # Process single file
+        process_file "$target"
+    else
+        echo "Warning: '$target' is not a valid file or directory" >&2
+    fi
+done
+
+# Check if any files were found
+if [ ${#file_count[@]} -eq 0 ]; then
+    echo "No files found in the specified target(s)."
+    exit 0
+fi
+
+# Function to format sizes in human-readable format
+format_size() {
+    local size=$1
+    local units=("B" "KB" "MB" "GB" "TB")
+    local unit_index=0
+    local size_float=$size
+    
+    while (( $(echo "$size_float >= 1024" | bc -l) )) && [ $unit_index -lt 4 ]; do
+        size_float=$(echo "scale=2; $size_float / 1024" | bc)
+        ((unit_index++))
+    done
+    
+    printf "%.2f %s" "$size_float" "${units[$unit_index]}"
+}
+
+# Calculate totals
+total_files=0
+total_size=0
+
+for ext in "${!file_count[@]}"; do
+    ((total_files+=file_count[$ext]))
+    ((total_size+=file_size[$ext]))
+done
+
+# Create temporary array for sorting
+declare -a sorted_extensions
+
+# Sort based on selected option
+case $SORT_BY in
+    extension)
+        # Sort alphabetically by extension
+        if [ $REVERSE_ORDER -eq 1 ]; then
+            mapfile -t sorted_extensions < <(printf "%s\n" "${!file_count[@]}" | sort -r)
+        else
+            mapfile -t sorted_extensions < <(printf "%s\n" "${!file_count[@]}" | sort)
+        fi
+        ;;
+    files)
+        # Sort by number of files
+        if [ $REVERSE_ORDER -eq 1 ]; then
+            mapfile -t sorted_extensions < <(
+                for ext in "${!file_count[@]}"; do
+                    printf "%d\t%s\n" "${file_count[$ext]}" "$ext"
+                done | sort -rn | cut -f2-
+            )
+        else
+            mapfile -t sorted_extensions < <(
+                for ext in "${!file_count[@]}"; do
+                    printf "%d\t%s\n" "${file_count[$ext]}" "$ext"
+                done | sort -n | cut -f2-
+            )
+        fi
+        ;;
+    size)
+        # Sort by size
+        if [ $REVERSE_ORDER -eq 1 ]; then
+            mapfile -t sorted_extensions < <(
+                for ext in "${!file_count[@]}"; do
+                    printf "%d\t%s\n" "${file_size[$ext]}" "$ext"
+                done | sort -rn | cut -f2-
+            )
+        else
+            mapfile -t sorted_extensions < <(
+                for ext in "${!file_count[@]}"; do
+                    printf "%d\t%s\n" "${file_size[$ext]}" "$ext"
+                done | sort -n | cut -f2-
+            )
+        fi
+        ;;
+esac
+
+# Print table header
+printf "%-20s %10s %8s %15s %15s %8s\n" "EXTENSION" "FILES" "%" "SIZE (bytes)" "SIZE" "%"
+printf "%-20s %10s %8s %15s %15s %8s\n" "--------------------" "----------" "--------" "---------------" "---------------" "--------"
+
+# Print statistics
+counter=0
+shown_files=0
+shown_size=0
+
+for ext in "${sorted_extensions[@]}"; do
+    # Check limit if specified
+    if [ $LIMIT -gt 0 ] && [ $counter -ge $LIMIT ]; then
+        break
+    fi
+    
+    count=${file_count[$ext]}
+    size=${file_size[$ext]}
+    formatted_size=$(format_size $size)
+    
+    # Accumulate shown totals
+    ((shown_files+=count))
+    ((shown_size+=size))
+    
+    # Calculate percentages (always relative to TOTAL)
+    count_percent=$(echo "scale=2; ($count * 100) / $total_files" | bc)
+    size_percent=$(echo "scale=2; ($size * 100) / $total_size" | bc)
+    
+    printf "%-20s %10d %7.2f%% %15d %15s %7.2f%%\n" "$ext" "$count" "$count_percent" "$size" "$formatted_size" "$size_percent"
+    
+    ((counter++))
+done
+
+# Print separator and totals
+echo ""
+
+# Check if result was limited
+if [ $LIMIT -gt 0 ] && [ $counter -lt ${#sorted_extensions[@]} ]; then
+    # Show ellipsis to indicate more rows exist
+    printf "%-20s %10s %8s %15s %15s %8s\n" "(...)" "" "" "" "" ""
+    printf "%-20s %10s %8s %15s %15s %8s\n" "--------------------" "----------" "--------" "---------------" "---------------" "--------"
+    
+    # Show subtotal for displayed rows
+    formatted_shown=$(format_size $shown_size)
+    shown_count_percent=$(echo "scale=2; ($shown_files * 100) / $total_files" | bc)
+    shown_size_percent=$(echo "scale=2; ($shown_size * 100) / $total_size" | bc)
+    printf "%-20s %10d %7.2f%% %15d %15s %7.2f%%\n" "SUBTOTAL (shown)" "$shown_files" "$shown_count_percent" "$shown_size" "$formatted_shown" "$shown_size_percent"
+    
+    # Show grand total
+    formatted_total=$(format_size $total_size)
+    # Calculate 100.00 using bc for consistency with other percentages
+    total_count_percent=$(echo "scale=2; 100.00" | bc)
+    total_size_percent=$(echo "scale=2; 100.00" | bc)
+    printf "%-20s %10d %7.2f%% %15d %15s %7.2f%%\n" "TOTAL (all)" "$total_files" "$total_count_percent" "$total_size" "$formatted_total" "$total_size_percent"
+else
+    # All rows shown, just show total
+    printf "%-20s %10s %8s %15s %15s %8s\n" "--------------------" "----------" "--------" "---------------" "---------------" "--------"
+    formatted_total=$(format_size $total_size)
+    # Calculate 100.00 using bc for consistency with other percentages
+    total_count_percent=$(echo "scale=2; 100.00" | bc)
+    total_size_percent=$(echo "scale=2; 100.00" | bc)
+    printf "%-20s %10d %7.2f%% %15d %15s %7.2f%%\n" "TOTAL" "$total_files" "$total_count_percent" "$total_size" "$formatted_total" "$total_size_percent"
+fi
