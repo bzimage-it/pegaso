@@ -1,19 +1,55 @@
 #!/bin/bash
 
+PEGASO_START_SCRIPT_PWD=$(pwd)
+
+# this is a code snipped:
+# from http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in
+# to understand what directory it's stored in bash script itself
+
+PEGASO_SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$PEGASO_SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+  PEGASO_DIR="$( cd -P "$( dirname "$PEGASO_SOURCE" )" && pwd )"
+  PEGASO_SOURCE="$(readlink "$PEGASO_SOURCE")"
+  [[ $PEGASO_SOURCE != /* ]] && PEGASO_SOURCE="$PEGASO_DIR/$PEGASO_SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+done
+PEGASO_SCRIPT_DIR="$( cd -P "$( dirname "$PEGASO_SOURCE" )" && pwd )"
+PEGASO_SCRIPT_FILE=$(basename "$PEGASO_SOURCE")
+# end of snipped
+
+cd "$PEGASO_SCRIPT_DIR"
+cd .. || exit 1
+export PEGASO_ROOT="$(pwd)"
+
+PEGASO_PARENT_ROOT="$(dirname "$PEGASO_ROOT")"
+
+
+
 # Script to analyze files by type (extension) in a directory
 # Provides statistics on file count and total size for each extension
 
+# Force C locale for bc to use dot as decimal separator
+export LC_NUMERIC=C
+
 # Default variables
 SORT_BY="extension"  # extension, files, size
-REVERSE_ORDER=0
+SORT_ORDER="desc"  # desc (descending) or asc (ascending)
 LIMIT=0
+SHOW_PROGRESS=0
 declare -a TARGETS=()
 INPUT_FILE=""
+
+# Extension extraction options
+MAX_EXT_LENGTH=8
+INCLUDE_HIDDEN_EXT=0
+ALLOW_NUMERIC_EXT=0
+USE_COMPOUND_EXT=1
+EXTRACTION_MODE="strict"  # strict or relaxed
+COMPOUND_EXTENSIONS="tar.gz|tar.bz2|tar.xz|tar.Z|tar.lz|tar.zst"
 
 # Help function
 show_help() {
     cat << EOF
-Usage: $0 [FILES/DIRECTORIES...] [OPTIONS]
+Usage: $PEGASO_SCRIPT_FILE [FILES/DIRECTORIES...] [OPTIONS]
 
 Recursively analyzes directories and files, providing statistics by file type.
 
@@ -28,17 +64,52 @@ OPTIONS:
     -se, -st    Sort by extension/type (default)
     -sf         Sort by number of files
     -ss         Sort by total size
-    -r          Reverse order (descending)
+    -d          Descending order (default)
+    -a          Ascending order
     -n NUM      Show only first NUM elements
+    -p          Show progress indicator (useful for large directories)
     -h          Show this help
+    
+NOTES:
+    1. The script uses 'find -xdev' to avoid crossing filesystem boundaries.
+       This prevents analyzing mounted network drives, USB devices, etc.
+    
+    2. WARNING: When using -i with a file list from 'find', be careful with
+       directories in the list. Directories are processed recursively, which
+       may cause files to be counted multiple times.
+       
+       WRONG:   find /path/dir > list.txt
+                (includes the directory itself, causing double counting)
+       
+       CORRECT: find /path/dir -type f > list.txt
+                (only files, no double counting)
+
+EXTENSION EXTRACTION OPTIONS:
+    --max-ext-len NUM       Maximum extension length (default: 8)
+    --include-hidden-ext    Treat hidden files (.bashrc) as having extension
+    --allow-numeric-ext     Allow purely numeric extensions (.2024, .001)
+    --no-compound-ext       Don't recognize compound extensions (tar.gz)
+    --compound-ext LIST     Custom compound extensions (e.g., "tar.gz,zip.enc")
+    --relaxed              Use relaxed mode (accept any extension)
+    --strict               Use strict mode with all heuristics (default)
 
 EXAMPLES:
-    $0                              # Analyze current directory
-    $0 dir1/ dir2/ file.txt         # Analyze multiple paths
-    $0 -sf -r                       # Sort by file count, descending
-    $0 -ss -n 10                    # Show top 10 by size
-    $0 -i filelist.txt -ss -r       # Read paths from file, sort by size
-    $0 *.csv *.txt -sf              # Analyze specific file types
+    $PEGASO_SCRIPT_FILE                              # Analyze current directory
+    $PEGASO_SCRIPT_FILE dir1/ dir2/ file.txt         # Analyze multiple paths
+    $PEGASO_SCRIPT_FILE -sf                          # Sort by file count, descending (default)
+    $PEGASO_SCRIPT_FILE -ss -n 10                    # Show top 10 by size
+    $PEGASO_SCRIPT_FILE -sf -a                       # Sort by file count, ascending
+    $PEGASO_SCRIPT_FILE *.csv *.txt -sf              # Analyze specific file types
+    $PEGASO_SCRIPT_FILE --relaxed -ss                # Relaxed mode, accept all extensions
+    $PEGASO_SCRIPT_FILE --max-ext-len 12 .           # Allow longer extensions
+    
+    # Using with find (IMPORTANT: use -type f to avoid double counting)
+    find /path/to/dir -type f > list.txt
+    $PEGASO_SCRIPT_FILE -i list.txt -ss             # Read file list, sort by size
+    
+    # Using with find and filtering multiple extensions
+    find . -type f \( -name "*.log" -o -name "*.txt" -o -name "*.md" \) > docs.txt
+    $PEGASO_SCRIPT_FILE -i docs.txt -sf             # Analyze log, txt and md files
 
 EOF
     exit 0
@@ -59,17 +130,54 @@ while [[ $# -gt 0 ]]; do
             SORT_BY="size"
             shift
             ;;
-        -r)
-            REVERSE_ORDER=1
+        -d)
+            SORT_ORDER="desc"
+            shift
+            ;;
+        -a)
+            SORT_ORDER="asc"
             shift
             ;;
         -n)
             LIMIT="$2"
             shift 2
             ;;
+        -p)
+            SHOW_PROGRESS=1
+            shift
+            ;;
         -i)
             INPUT_FILE="$2"
             shift 2
+            ;;
+        --max-ext-len)
+            MAX_EXT_LENGTH="$2"
+            shift 2
+            ;;
+        --include-hidden-ext)
+            INCLUDE_HIDDEN_EXT=1
+            shift
+            ;;
+        --allow-numeric-ext)
+            ALLOW_NUMERIC_EXT=1
+            shift
+            ;;
+        --no-compound-ext)
+            USE_COMPOUND_EXT=0
+            shift
+            ;;
+        --compound-ext)
+            COMPOUND_EXTENSIONS="$2"
+            USE_COMPOUND_EXT=1
+            shift 2
+            ;;
+        --relaxed)
+            EXTRACTION_MODE="relaxed"
+            shift
+            ;;
+        --strict)
+            EXTRACTION_MODE="strict"
+            shift
             ;;
         -h|--help)
             show_help
@@ -123,50 +231,140 @@ echo ""
 declare -A file_count
 declare -A file_size
 
-# Function to process a single file
-process_file() {
-    local file="$1"
+# Function to extract file extension using improved heuristics
+extract_extension() {
+    local filename="$1"
     
-    # Get file extension
-    filename=$(basename "$file")
-    
-    # Extract extension (everything after the last dot)
-    if [[ "$filename" == *.* ]]; then
-        extension="${filename##*.}"
-        # Convert to lowercase for consistency
-        extension="${extension,,}"
-    else
-        # File without extension
-        extension="(no extension)"
-    fi
-    
-    # Get file size in bytes
-    size=$(stat -c "%s" "$file" 2>/dev/null)
-    
-    # Skip if stat failed
-    if [ -z "$size" ]; then
+    # Relaxed mode: just take everything after last dot
+    if [ "$EXTRACTION_MODE" = "relaxed" ]; then
+        if [[ "$filename" == *.* ]]; then
+            local ext="${filename##*.}"
+            # Still convert to lowercase and filter empty
+            if [ -n "$ext" ]; then
+                echo "${ext,,}"
+            else
+                echo "(no extension)"
+            fi
+        else
+            echo "(no extension)"
+        fi
         return
     fi
     
+    # Strict mode: apply heuristics
+    
+    # Handle hidden files (starting with . and having no other dots)
+    if [[ "$filename" =~ ^\.[^.]+$ ]]; then
+        # File like .bashrc, .vimrc
+        if [ $INCLUDE_HIDDEN_EXT -eq 1 ]; then
+            # Treat as extension
+            local ext="${filename#.}"
+            echo "${ext,,}"
+        else
+            echo "(no extension)"
+        fi
+        return
+    fi
+    
+    # Check if file has any dot
+    if [[ "$filename" != *.* ]]; then
+        echo "(no extension)"
+        return
+    fi
+    
+    # Handle compound extensions if enabled
+    if [ $USE_COMPOUND_EXT -eq 1 ]; then
+        # Build regex pattern from pipe-separated or comma-separated list
+        local exts="${COMPOUND_EXTENSIONS//,/|}"  # Convert comma to pipe
+        local pattern="\\.(${exts})$"
+        if [[ "$filename" =~ $pattern ]]; then
+            # Extract compound extension (e.g., tar.gz)
+            local compound="${BASH_REMATCH[0]#.}"
+            echo "$compound"
+            return
+        fi
+    fi
+    
+    # Extract last extension
+    local ext="${filename##*.}"
+    
+    # Validation rules (strict mode):
+    
+    # 1. Extension too long
+    if [ ${#ext} -gt $MAX_EXT_LENGTH ]; then
+        echo "(no extension)"
+        return
+    fi
+    
+    # 2. Extension is purely numeric
+    if [ $ALLOW_NUMERIC_EXT -eq 0 ] && [[ "$ext" =~ ^[0-9]+$ ]]; then
+        echo "(no extension)"
+        return
+    fi
+    
+    # 3. Extension contains only special characters or is empty
+    if [[ ! "$ext" =~ [a-zA-Z] ]]; then
+        echo "(no extension)"
+        return
+    fi
+    
+    # Valid extension - convert to lowercase
+    echo "${ext,,}"
+}
+
+# Function to process a single file (optimized version)
+process_file() {
+    local filepath="$1"
+    local filesize="$2"
+    
+    # Extract filename from path (avoid basename subprocess)
+    local filename="${filepath##*/}"
+    
+    # Extract extension using improved heuristics
+    extension=$(extract_extension "$filename")
+    
     # Increment counter and total size
     ((file_count[$extension]++))
-    ((file_size[$extension]+=$size))
+    ((file_size[$extension]+=filesize))
 }
 
 # Process each target
+file_counter=0
 for target in "${TARGETS[@]}"; do
     if [ -d "$target" ]; then
         # Process directory recursively
-        while IFS= read -r -d '' file; do
-            process_file "$file"
-        done < <(find "$target" -type f -print0 2>/dev/null)
+        # Use find -xdev to avoid crossing filesystem boundaries (NFS, USB, etc.)
+        # Use find -printf to get size and path in one pass (much faster than stat for each file)
+        while IFS= read -r line; do
+            # Parse size and filepath from find output
+            size="${line%% *}"
+            filepath="${line#* }"
+            process_file "$filepath" "$size"
+            
+            # Show progress every 1000 files if enabled
+            if [ $SHOW_PROGRESS -eq 1 ]; then
+                ((file_counter++))
+                if ((file_counter % 1000 == 0)); then
+                    echo -ne "\rProcessed $file_counter files..." >&2
+                fi
+            fi
+        done < <(find "$target" -xdev -type f -printf '%s %p\n' 2>/dev/null)
     elif [ -f "$target" ]; then
-        # Process single file
-        process_file "$target"
+        # Process single file - use stat only for single files
+        size=$(stat -c "%s" "$target" 2>/dev/null)
+        if [ -n "$size" ]; then
+            process_file "$target" "$size"
+            ((file_counter++))
+        fi
     else
         echo "Warning: '$target' is not a valid file or directory" >&2
     fi
 done
+
+# Clear progress line if shown
+if [ $SHOW_PROGRESS -eq 1 ] && [ $file_counter -gt 0 ]; then
+    echo -ne "\rProcessed $file_counter files... Done!\n" >&2
+fi
 
 # Check if any files were found
 if [ ${#file_count[@]} -eq 0 ]; then
@@ -205,7 +403,7 @@ declare -a sorted_extensions
 case $SORT_BY in
     extension)
         # Sort alphabetically by extension
-        if [ $REVERSE_ORDER -eq 1 ]; then
+        if [ "$SORT_ORDER" = "desc" ]; then
             mapfile -t sorted_extensions < <(printf "%s\n" "${!file_count[@]}" | sort -r)
         else
             mapfile -t sorted_extensions < <(printf "%s\n" "${!file_count[@]}" | sort)
@@ -213,7 +411,7 @@ case $SORT_BY in
         ;;
     files)
         # Sort by number of files
-        if [ $REVERSE_ORDER -eq 1 ]; then
+        if [ "$SORT_ORDER" = "desc" ]; then
             mapfile -t sorted_extensions < <(
                 for ext in "${!file_count[@]}"; do
                     printf "%d\t%s\n" "${file_count[$ext]}" "$ext"
@@ -229,7 +427,7 @@ case $SORT_BY in
         ;;
     size)
         # Sort by size
-        if [ $REVERSE_ORDER -eq 1 ]; then
+        if [ "$SORT_ORDER" = "desc" ]; then
             mapfile -t sorted_extensions < <(
                 for ext in "${!file_count[@]}"; do
                     printf "%d\t%s\n" "${file_size[$ext]}" "$ext"
@@ -270,9 +468,15 @@ for ext in "${sorted_extensions[@]}"; do
     
     # Calculate percentages (always relative to TOTAL)
     count_percent=$(echo "scale=2; ($count * 100) / $total_files" | bc)
-    size_percent=$(echo "scale=2; ($size * 100) / $total_size" | bc)
     
-    printf "%-20s %10d %7.2f%% %15d %15s %7.2f%%\n" "$ext" "$count" "$count_percent" "$size" "$formatted_size" "$size_percent"
+    # Format output based on whether total_size is zero
+    if [ $total_size -eq 0 ]; then
+        # No meaningful size percentage when total is zero
+        printf "%-20s %10d %7.2f%% %15d %15s %8s\n" "$ext" "$count" "$count_percent" "$size" "$formatted_size" "-"
+    else
+        size_percent=$(echo "scale=2; ($size * 100) / $total_size" | bc)
+        printf "%-20s %10d %7.2f%% %15d %15s %7.2f%%\n" "$ext" "$count" "$count_percent" "$size" "$formatted_size" "$size_percent"
+    fi
     
     ((counter++))
 done
@@ -289,21 +493,37 @@ if [ $LIMIT -gt 0 ] && [ $counter -lt ${#sorted_extensions[@]} ]; then
     # Show subtotal for displayed rows
     formatted_shown=$(format_size $shown_size)
     shown_count_percent=$(echo "scale=2; ($shown_files * 100) / $total_files" | bc)
-    shown_size_percent=$(echo "scale=2; ($shown_size * 100) / $total_size" | bc)
-    printf "%-20s %10d %7.2f%% %15d %15s %7.2f%%\n" "SUBTOTAL (shown)" "$shown_files" "$shown_count_percent" "$shown_size" "$formatted_shown" "$shown_size_percent"
+    
+    if [ $total_size -eq 0 ]; then
+        # No meaningful size percentage when total is zero
+        printf "%-20s %10d %7.2f%% %15d %15s %8s\n" "SUBTOTAL (shown)" "$shown_files" "$shown_count_percent" "$shown_size" "$formatted_shown" "-"
+    else
+        shown_size_percent=$(echo "scale=2; ($shown_size * 100) / $total_size" | bc)
+        printf "%-20s %10d %7.2f%% %15d %15s %7.2f%%\n" "SUBTOTAL (shown)" "$shown_files" "$shown_count_percent" "$shown_size" "$formatted_shown" "$shown_size_percent"
+    fi
     
     # Show grand total
     formatted_total=$(format_size $total_size)
-    # Calculate 100.00 using bc for consistency with other percentages
     total_count_percent=$(echo "scale=2; 100.00" | bc)
-    total_size_percent=$(echo "scale=2; 100.00" | bc)
-    printf "%-20s %10d %7.2f%% %15d %15s %7.2f%%\n" "TOTAL (all)" "$total_files" "$total_count_percent" "$total_size" "$formatted_total" "$total_size_percent"
+    
+    if [ $total_size -eq 0 ]; then
+        # No meaningful size percentage when total is zero
+        printf "%-20s %10d %7.2f%% %15d %15s %8s\n" "TOTAL (all)" "$total_files" "$total_count_percent" "$total_size" "$formatted_total" "-"
+    else
+        total_size_percent=$(echo "scale=2; 100.00" | bc)
+        printf "%-20s %10d %7.2f%% %15d %15s %7.2f%%\n" "TOTAL (all)" "$total_files" "$total_count_percent" "$total_size" "$formatted_total" "$total_size_percent"
+    fi
 else
     # All rows shown, just show total
     printf "%-20s %10s %8s %15s %15s %8s\n" "--------------------" "----------" "--------" "---------------" "---------------" "--------"
     formatted_total=$(format_size $total_size)
-    # Calculate 100.00 using bc for consistency with other percentages
     total_count_percent=$(echo "scale=2; 100.00" | bc)
-    total_size_percent=$(echo "scale=2; 100.00" | bc)
-    printf "%-20s %10d %7.2f%% %15d %15s %7.2f%%\n" "TOTAL" "$total_files" "$total_count_percent" "$total_size" "$formatted_total" "$total_size_percent"
+    
+    if [ $total_size -eq 0 ]; then
+        # No meaningful size percentage when total is zero
+        printf "%-20s %10d %7.2f%% %15d %15s %8s\n" "TOTAL" "$total_files" "$total_count_percent" "$total_size" "$formatted_total" "-"
+    else
+        total_size_percent=$(echo "scale=2; 100.00" | bc)
+        printf "%-20s %10d %7.2f%% %15d %15s %7.2f%%\n" "TOTAL" "$total_files" "$total_count_percent" "$total_size" "$formatted_total" "$total_size_percent"
+    fi
 fi
