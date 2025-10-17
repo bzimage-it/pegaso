@@ -1,529 +1,603 @@
-#!/bin/bash
+#!/usr/bin/env python3
+"""
+File Type Statistics Analyzer
 
-PEGASO_START_SCRIPT_PWD=$(pwd)
+Recursively analyzes files and provides statistics by file extension.
+Reports file count and total size for each file type.
 
-# this is a code snipped:
-# from http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in
-# to understand what directory it's stored in bash script itself
+Author: Fabrizio Sebastiani
+Date: 2025-10-17
+"""
 
-PEGASO_SOURCE="${BASH_SOURCE[0]}"
-while [ -h "$PEGASO_SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
-  PEGASO_DIR="$( cd -P "$( dirname "$PEGASO_SOURCE" )" && pwd )"
-  PEGASO_SOURCE="$(readlink "$PEGASO_SOURCE")"
-  [[ $PEGASO_SOURCE != /* ]] && PEGASO_SOURCE="$PEGASO_DIR/$PEGASO_SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
-done
-PEGASO_SCRIPT_DIR="$( cd -P "$( dirname "$PEGASO_SOURCE" )" && pwd )"
-PEGASO_SCRIPT_FILE=$(basename "$PEGASO_SOURCE")
-# end of snipped
+import os
+import sys
+import argparse
+import re
+import json
+from collections import defaultdict
+from pathlib import Path
+from typing import Dict, List, Tuple, Set, Optional
 
-cd "$PEGASO_SCRIPT_DIR"
-cd .. || exit 1
-export PEGASO_ROOT="$(pwd)"
+# ANSI color codes (optional, for future use)
+class Colors:
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+    RED = '\033[91m'
+    GREEN = '\033[92m'
+    YELLOW = '\033[93m'
+    BLUE = '\033[94m'
 
-PEGASO_PARENT_ROOT="$(dirname "$PEGASO_ROOT")"
 
-
-
-# Script to analyze files by type (extension) in a directory
-# Provides statistics on file count and total size for each extension
-
-# Force C locale for bc to use dot as decimal separator
-export LC_NUMERIC=C
-
-# Default variables
-SORT_BY="extension"  # extension, files, size
-SORT_ORDER="desc"  # desc (descending) or asc (ascending)
-LIMIT=0
-SHOW_PROGRESS=0
-declare -a TARGETS=()
-INPUT_FILE=""
-
-# Extension extraction options
-MAX_EXT_LENGTH=8
-INCLUDE_HIDDEN_EXT=0
-ALLOW_NUMERIC_EXT=0
-USE_COMPOUND_EXT=1
-EXTRACTION_MODE="strict"  # strict or relaxed
-COMPOUND_EXTENSIONS="tar.gz|tar.bz2|tar.xz|tar.Z|tar.lz|tar.zst"
-
-# Help function
-show_help() {
-    cat << EOF
-Usage: $PEGASO_SCRIPT_FILE [FILES/DIRECTORIES...] [OPTIONS]
-
-Recursively analyzes directories and files, providing statistics by file type.
-
-FILES/DIRECTORIES:
-    Files or directories to analyze (default: current directory)
-    - If a directory: recursively analyzed
-    - If a file: added to statistics
-    - Multiple paths can be specified
-
-OPTIONS:
-    -i FILE     Read list of files/directories from FILE (one per line)
-    -se, -st    Sort by extension/type (default)
-    -sf         Sort by number of files
-    -ss         Sort by total size
-    -d          Descending order (default)
-    -a          Ascending order
-    -n NUM      Show only first NUM elements
-    -p          Show progress indicator (useful for large directories)
-    -h          Show this help
+class RawFileData:
+    """Stores raw file information before processing."""
     
+    def __init__(self):
+        self.files: List[Dict[str, any]] = []
+        self.scan_metadata = {
+            'version': '1.0',
+            'timestamp': None,
+            'total_files': 0,
+            'total_size': 0,
+            'targets': []
+        }
+    
+    def add_file(self, filepath: str, size: int, filename: str) -> None:
+        """Add a file to the raw data."""
+        self.files.append({
+            'path': filepath,
+            'size': size,
+            'name': filename
+        })
+        self.scan_metadata['total_files'] += 1
+        self.scan_metadata['total_size'] += size
+    
+    def to_dict(self) -> Dict:
+        """Convert to dictionary for JSON serialization."""
+        import datetime
+        self.scan_metadata['timestamp'] = datetime.datetime.now().isoformat()
+        return {
+            'metadata': self.scan_metadata,
+            'files': self.files
+        }
+    
+    @classmethod
+    def from_dict(cls, data: Dict) -> 'RawFileData':
+        """Load from dictionary (JSON deserialization)."""
+        raw_data = cls()
+        raw_data.scan_metadata = data.get('metadata', {})
+        raw_data.files = data.get('files', [])
+        return raw_data
+    
+    def dump_to_file(self, filename: str) -> None:
+        """Save raw data to JSON file."""
+        with open(filename, 'w') as f:
+            json.dump(self.to_dict(), f, indent=2)
+        print(f"\n✓ Raw data saved to: {filename}", file=sys.stderr)
+        print(f"  Files: {self.scan_metadata['total_files']}", file=sys.stderr)
+        print(f"  Total size: {format_size(self.scan_metadata['total_size'])}", file=sys.stderr)
+    
+    @classmethod
+    def load_from_file(cls, filename: str) -> 'RawFileData':
+        """Load raw data from JSON file."""
+        try:
+            with open(filename, 'r') as f:
+                data = json.load(f)
+            raw_data = cls.from_dict(data)
+            print(f"\n✓ Raw data loaded from: {filename}", file=sys.stderr)
+            print(f"  Scan date: {raw_data.scan_metadata.get('timestamp', 'unknown')}", file=sys.stderr)
+            print(f"  Files: {raw_data.scan_metadata['total_files']}", file=sys.stderr)
+            print(f"  Total size: {format_size(raw_data.scan_metadata['total_size'])}", file=sys.stderr)
+            print(file=sys.stderr)
+            return raw_data
+        except (IOError, json.JSONDecodeError) as e:
+            print(f"Error loading raw data file: {e}", file=sys.stderr)
+            sys.exit(1)
+
+
+class ExtensionExtractor:
+    """Handles file extension extraction with configurable heuristics."""
+    
+    # Common compound extensions
+    DEFAULT_COMPOUND_EXTENSIONS = {
+        'tar.gz', 'tar.bz2', 'tar.xz', 'tar.Z', 'tar.lz',
+        'tar.zst', 'backup.zip', 'backup.tar'
+    }
+    
+    def __init__(self, 
+                 max_ext_len: int = 8,
+                 include_hidden_ext: bool = False,
+                 allow_numeric_ext: bool = False,
+                 use_compound_ext: bool = True,
+                 compound_extensions: Set[str] = None,
+                 relaxed: bool = False):
+        self.max_ext_len = max_ext_len
+        self.include_hidden_ext = include_hidden_ext
+        self.allow_numeric_ext = allow_numeric_ext
+        self.use_compound_ext = use_compound_ext
+        self.compound_extensions = compound_extensions or self.DEFAULT_COMPOUND_EXTENSIONS
+        self.relaxed = relaxed
+    
+    def extract(self, filename: str) -> str:
+        """Extract file extension with heuristics."""
+        
+        # Relaxed mode: just take everything after last dot
+        if self.relaxed:
+            if '.' in filename:
+                ext = filename.rsplit('.', 1)[1].lower()
+                return ext if ext else '(no extension)'
+            return '(no extension)'
+        
+        # Strict mode: apply heuristics
+        
+        # Handle hidden files (starting with . and having no other dots)
+        if filename.startswith('.') and filename.count('.') == 1:
+            if self.include_hidden_ext:
+                return filename[1:].lower()
+            return '(no extension)'
+        
+        # Check if file has any dot
+        if '.' not in filename:
+            return '(no extension)'
+        
+        # Handle compound extensions if enabled
+        if self.use_compound_ext:
+            filename_lower = filename.lower()
+            for compound_ext in sorted(self.compound_extensions, key=len, reverse=True):
+                if filename_lower.endswith('.' + compound_ext):
+                    return compound_ext
+        
+        # Extract last extension
+        ext = filename.rsplit('.', 1)[1].lower()
+        
+        # Validation rules (strict mode):
+        
+        # 1. Extension too long
+        if len(ext) > self.max_ext_len:
+            return '(no extension)'
+        
+        # 2. Extension is purely numeric
+        if not self.allow_numeric_ext and ext.isdigit():
+            return '(no extension)'
+        
+        # 3. Extension contains no letters
+        if not re.search(r'[a-zA-Z]', ext):
+            return '(no extension)'
+        
+        return ext
+
+
+class FileScanner:
+    """Phase 1: Scans filesystem and collects raw file data."""
+    
+    def __init__(self):
+        self.raw_data = RawFileData()
+        self.file_counter = 0
+    
+    def scan_paths(self, paths: List[str], show_progress: bool = False) -> RawFileData:
+        """Scan multiple paths and collect raw data."""
+        self.raw_data.scan_metadata['targets'] = paths
+        
+        for path in paths:
+            if not os.path.exists(path):
+                print(f"Warning: Path does not exist: {path}", file=sys.stderr)
+                continue
+            
+            if os.path.isfile(path):
+                self._scan_file(path)
+            elif os.path.isdir(path):
+                self._scan_directory(path, show_progress)
+        
+        if show_progress and self.file_counter > 0:
+            print(file=sys.stderr)  # Clear progress line
+        
+        return self.raw_data
+    
+    def _scan_file(self, filepath: str) -> None:
+        """Scan a single file."""
+        try:
+            size = os.path.getsize(filepath)
+            filename = os.path.basename(filepath)
+            self.raw_data.add_file(filepath, size, filename)
+            self.file_counter += 1
+        except (OSError, IOError):
+            pass
+    
+    def _scan_directory(self, directory: str, show_progress: bool) -> None:
+        """Recursively scan directory (stays within same filesystem)."""
+        try:
+            # Get device ID of starting directory
+            start_dev = os.stat(directory).st_dev
+            
+            for root, dirs, files in os.walk(directory, followlinks=False):
+                # Check if we crossed filesystem boundary
+                try:
+                    if os.stat(root).st_dev != start_dev:
+                        dirs.clear()  # Don't descend into subdirectories
+                        continue
+                except OSError:
+                    continue
+                
+                # Remove directories that cross filesystem boundaries
+                dirs_to_remove = []
+                for d in dirs:
+                    try:
+                        if os.stat(os.path.join(root, d)).st_dev != start_dev:
+                            dirs_to_remove.append(d)
+                    except OSError:
+                        dirs_to_remove.append(d)
+                
+                for d in dirs_to_remove:
+                    dirs.remove(d)
+                
+                # Scan files
+                for filename in files:
+                    filepath = os.path.join(root, filename)
+                    self._scan_file(filepath)
+                    
+                    if show_progress and self.file_counter % 1000 == 0:
+                        print(f"\rScanning... {self.file_counter} files found", 
+                              end='', file=sys.stderr, flush=True)
+                
+        except (OSError, IOError) as e:
+            print(f"Error accessing directory {directory}: {e}", file=sys.stderr)
+
+
+class FileStats:
+    """Phase 2: Process raw data and generate statistics by extension."""
+    
+    def __init__(self, extractor: ExtensionExtractor):
+        self.extractor = extractor
+        self.stats: Dict[str, Dict[str, int]] = defaultdict(lambda: {'count': 0, 'size': 0})
+        self.total_files = 0
+        self.total_size = 0
+    
+    def process_raw_data(self, raw_data: RawFileData) -> None:
+        """Process raw data and generate statistics."""
+        for file_info in raw_data.files:
+            filename = file_info['name']
+            size = file_info['size']
+            
+            ext = self.extractor.extract(filename)
+            
+            self.stats[ext]['count'] += 1
+            self.stats[ext]['size'] += size
+            self.total_files += 1
+            self.total_size += size
+
+
+def format_size(size_bytes: int) -> str:
+    """Format size in human-readable format."""
+    if size_bytes == 0:
+        return "0.00 B"
+    
+    units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB']
+    unit_index = 0
+    size = float(size_bytes)
+    
+    while size >= 1024.0 and unit_index < len(units) - 1:
+        size /= 1024.0
+        unit_index += 1
+    
+    return f"{size:.2f} {units[unit_index]}"
+
+
+def sort_extensions(stats: Dict[str, Dict[str, int]], 
+                    sort_by: str, 
+                    ascending: bool) -> List[str]:
+    """Sort extensions based on criteria."""
+    
+    if sort_by == 'extension':
+        sorted_exts = sorted(stats.keys(), reverse=not ascending)
+    elif sort_by == 'files':
+        sorted_exts = sorted(stats.keys(), 
+                           key=lambda x: stats[x]['count'], 
+                           reverse=not ascending)
+    elif sort_by == 'size':
+        sorted_exts = sorted(stats.keys(), 
+                           key=lambda x: stats[x]['size'], 
+                           reverse=not ascending)
+    else:
+        sorted_exts = sorted(stats.keys())
+    
+    return sorted_exts
+
+
+def print_results(file_stats: FileStats, 
+                 sort_by: str, 
+                 ascending: bool, 
+                 limit: int) -> None:
+    """Print formatted results table."""
+    
+    if file_stats.total_files == 0:
+        print("No files found.")
+        return
+    
+    # Sort extensions
+    sorted_exts = sort_extensions(file_stats.stats, sort_by, ascending)
+    
+    # Print header
+    print(f"\n{'EXTENSION':<20} {'FILES':>10} {'%':>8} {'SIZE (bytes)':>15} {'SIZE':>15} {'%':>8}")
+    print(f"{'-'*20} {'-'*10} {'-'*8} {'-'*15} {'-'*15} {'-'*8}")
+    
+    # Track shown totals for subtotal calculation
+    shown_files = 0
+    shown_size = 0
+    counter = 0
+    
+    # Print rows
+    for ext in sorted_exts:
+        if limit > 0 and counter >= limit:
+            break
+        
+        count = file_stats.stats[ext]['count']
+        size = file_stats.stats[ext]['size']
+        formatted_size = format_size(size)
+        
+        shown_files += count
+        shown_size += size
+        
+        # Calculate percentages
+        count_percent = (count * 100.0) / file_stats.total_files
+        
+        if file_stats.total_size == 0:
+            size_percent_str = "-"
+        else:
+            size_percent = (size * 100.0) / file_stats.total_size
+            size_percent_str = f"{size_percent:7.2f}%"
+        
+        print(f"{ext:<20} {count:>10} {count_percent:>7.2f}% {size:>15} {formatted_size:>15} {size_percent_str:>8}")
+        counter += 1
+    
+    # Print totals
+    print()
+    
+    if limit > 0 and counter < len(sorted_exts):
+        # Show ellipsis and subtotal
+        print(f"{'(...)':<20} {'':>10} {'':>8} {'':>15} {'':>15} {'':>8}")
+        print(f"{'-'*20} {'-'*10} {'-'*8} {'-'*15} {'-'*15} {'-'*8}")
+        
+        # Subtotal
+        shown_count_percent = (shown_files * 100.0) / file_stats.total_files
+        formatted_shown = format_size(shown_size)
+        
+        if file_stats.total_size == 0:
+            shown_size_percent_str = "-"
+        else:
+            shown_size_percent = (shown_size * 100.0) / file_stats.total_size
+            shown_size_percent_str = f"{shown_size_percent:7.2f}%"
+        
+        print(f"{'SUBTOTAL (shown)':<20} {shown_files:>10} {shown_count_percent:>7.2f}% "
+              f"{shown_size:>15} {formatted_shown:>15} {shown_size_percent_str:>8}")
+        
+        # Grand total
+        formatted_total = format_size(file_stats.total_size)
+        total_size_percent_str = "-" if file_stats.total_size == 0 else "100.00%"
+        
+        print(f"{'TOTAL (all)':<20} {file_stats.total_files:>10} {100.00:>7.2f}% "
+              f"{file_stats.total_size:>15} {formatted_total:>15} {total_size_percent_str:>8}")
+    else:
+        # All rows shown
+        print(f"{'-'*20} {'-'*10} {'-'*8} {'-'*15} {'-'*15} {'-'*8}")
+        formatted_total = format_size(file_stats.total_size)
+        total_size_percent_str = "-" if file_stats.total_size == 0 else "100.00%"
+        
+        print(f"{'TOTAL':<20} {file_stats.total_files:>10} {100.00:>7.2f}% "
+              f"{file_stats.total_size:>15} {formatted_total:>15} {total_size_percent_str:>8}")
+    
+    print()
+
+
+def main():
+    parser = argparse.ArgumentParser(
+        description='Analyze files by extension with statistics',
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog='''
 NOTES:
-    1. The script uses 'find -xdev' to avoid crossing filesystem boundaries.
-       This prevents analyzing mounted network drives, USB devices, etc.
+    1. The script uses os.walk with device checking to avoid crossing
+       filesystem boundaries (equivalent to find -xdev).
     
     2. WARNING: When using -i with a file list from 'find', be careful with
        directories in the list. Directories are processed recursively, which
        may cause files to be counted multiple times.
        
        WRONG:   find /path/dir > list.txt
-                (includes the directory itself, causing double counting)
-       
        CORRECT: find /path/dir -type f > list.txt
-                (only files, no double counting)
-
-EXTENSION EXTRACTION OPTIONS:
-    --max-ext-len NUM       Maximum extension length (default: 8)
-    --include-hidden-ext    Treat hidden files (.bashrc) as having extension
-    --allow-numeric-ext     Allow purely numeric extensions (.2024, .001)
-    --no-compound-ext       Don't recognize compound extensions (tar.gz)
-    --compound-ext LIST     Custom compound extensions (e.g., "tar.gz,zip.enc")
-    --relaxed              Use relaxed mode (accept any extension)
-    --strict               Use strict mode with all heuristics (default)
+    
+    3. TWO-PHASE OPERATION: The script can separate scanning from reporting.
+       This is useful for large directories: scan once, generate multiple
+       reports with different options without re-scanning.
+       
+       Phase 1 (Scan):  %(prog)s /huge/dir --dump-data scan.json
+       Phase 2 (Report): %(prog)s --load-data scan.json -ss -n 10
+                         %(prog)s --load-data scan.json -sf -a
+                         %(prog)s --load-data scan.json --relaxed -se
 
 EXAMPLES:
-    $PEGASO_SCRIPT_FILE                              # Analyze current directory
-    $PEGASO_SCRIPT_FILE dir1/ dir2/ file.txt         # Analyze multiple paths
-    $PEGASO_SCRIPT_FILE -sf                          # Sort by file count, descending (default)
-    $PEGASO_SCRIPT_FILE -ss -n 10                    # Show top 10 by size
-    $PEGASO_SCRIPT_FILE -sf -a                       # Sort by file count, ascending
-    $PEGASO_SCRIPT_FILE *.csv *.txt -sf              # Analyze specific file types
-    $PEGASO_SCRIPT_FILE --relaxed -ss                # Relaxed mode, accept all extensions
-    $PEGASO_SCRIPT_FILE --max-ext-len 12 .           # Allow longer extensions
+    # Basic usage
+    %(prog)s                              # Analyze current directory
+    %(prog)s dir1/ dir2/ file.txt         # Analyze multiple paths
+    %(prog)s -sf                          # Sort by file count (descending)
+    %(prog)s -ss -n 10                    # Show top 10 by size
+    %(prog)s -sf -a                       # Sort by file count (ascending)
+    %(prog)s -i list.txt -ss              # Read paths from file
+    %(prog)s --relaxed -ss                # Relaxed mode
+    %(prog)s --max-ext-len 12 .           # Allow longer extensions
     
-    # Using with find (IMPORTANT: use -type f to avoid double counting)
-    find /path/to/dir -type f > list.txt
-    $PEGASO_SCRIPT_FILE -i list.txt -ss             # Read file list, sort by size
+    # Pipeline with stdin
+    find /path -type f | %(prog)s -i - -ss -n 10
+    locate "*.log" | %(prog)s -i - -sf
+    git ls-files | %(prog)s -i - --relaxed
     
-    # Using with find and filtering multiple extensions
-    find . -type f \( -name "*.log" -o -name "*.txt" -o -name "*.md" \) > docs.txt
-    $PEGASO_SCRIPT_FILE -i docs.txt -sf             # Analyze log, txt and md files
+    # Two-phase operation (scan once, report many times)
+    %(prog)s ~/large_dir --dump-data mydata.json  # Scan and save
+    %(prog)s --load-data mydata.json -ss -n 20    # Top 20 by size
+    %(prog)s --load-data mydata.json -sf          # Sort by count
+    %(prog)s --load-data mydata.json --relaxed    # Different extraction
+        ''')
+    
+    # Main options
+    parser.add_argument('paths', nargs='*', default=['.'],
+                       help='Files or directories to analyze (default: current directory)')
+    parser.add_argument('-i', '--input-file', metavar='FILE',
+                       help='Read list of files/directories from FILE (one per line). Use "-" to read from stdin')
+    
+    # Data dump/load options (mutually exclusive)
+    data_group = parser.add_mutually_exclusive_group()
+    data_group.add_argument('--dump-data', metavar='FILE',
+                           help='Scan filesystem and save raw data to JSON file, then exit')
+    data_group.add_argument('--load-data', metavar='FILE',
+                           help='Load raw data from JSON file instead of scanning filesystem')
+    
+    # Sorting options
+    sort_group = parser.add_mutually_exclusive_group()
+    sort_group.add_argument('-se', '-st', '--sort-extension', action='store_true',
+                           help='Sort by extension/type (default)')
+    sort_group.add_argument('-sf', '--sort-files', action='store_true',
+                           help='Sort by number of files')
+    sort_group.add_argument('-ss', '--sort-size', action='store_true',
+                           help='Sort by total size')
+    
+    # Order options
+    order_group = parser.add_mutually_exclusive_group()
+    order_group.add_argument('-d', '--descending', action='store_true', default=True,
+                            help='Descending order (default)')
+    order_group.add_argument('-a', '--ascending', action='store_true',
+                            help='Ascending order')
+    
+    # Other options
+    parser.add_argument('-n', '--limit', type=int, metavar='NUM', default=0,
+                       help='Show only first NUM elements')
+    parser.add_argument('-p', '--progress', action='store_true',
+                       help='Show progress indicator (useful for large directories)')
+    
+    # Extension extraction options
+    ext_group = parser.add_argument_group('extension extraction options')
+    ext_group.add_argument('--max-ext-len', type=int, default=8, metavar='NUM',
+                          help='Maximum extension length (default: 8)')
+    ext_group.add_argument('--include-hidden-ext', action='store_true',
+                          help='Treat hidden files (.bashrc) as having extension')
+    ext_group.add_argument('--allow-numeric-ext', action='store_true',
+                          help='Allow purely numeric extensions (.2024, .001)')
+    ext_group.add_argument('--no-compound-ext', action='store_true',
+                          help="Don't recognize compound extensions (tar.gz)")
+    ext_group.add_argument('--compound-ext', metavar='LIST',
+                          help='Custom compound extensions (e.g., "tar.gz,zip.enc")')
+    
+    mode_group = ext_group.add_mutually_exclusive_group()
+    mode_group.add_argument('--relaxed', action='store_true',
+                           help='Use relaxed mode (accept any extension)')
+    mode_group.add_argument('--strict', action='store_true',
+                           help='Use strict mode with all heuristics (default)')
+    
+    args = parser.parse_args()
+    
+    # =========================================================================
+    # PHASE 1: Obtain Raw Data (either scan or load)
+    # =========================================================================
+    
+    raw_data = None
+    
+    if args.load_data:
+        # Load raw data from file
+        raw_data = RawFileData.load_from_file(args.load_data)
+    
+    else:
+        # Collect paths to scan
+        paths = []
+        if args.input_file:
+            try:
+                # Special case: '-' means read from stdin
+                if args.input_file == '-':
+                    input_stream = sys.stdin
+                else:
+                    input_stream = open(args.input_file, 'r')
+                
+                with input_stream:
+                    for line in input_stream:
+                        line = line.strip()
+                        # Skip empty lines and comments
+                        if line and not line.startswith('#'):
+                            paths.append(line)
+            except IOError as e:
+                print(f"Error reading input file: {e}", file=sys.stderr)
+                sys.exit(1)
+        else:
+            paths = args.paths
+        
+        # Print scan header
+        print("\nFile Statistics Analysis - Phase 1: Scanning", file=sys.stderr)
+        print("=" * 48, file=sys.stderr)
+        print(f"Scanning {len(paths)} target(s):", file=sys.stderr)
+        for path in paths[:10]:  # Show first 10
+            if os.path.isdir(path):
+                print(f"  [DIR]  {path}", file=sys.stderr)
+            elif os.path.isfile(path):
+                print(f"  [FILE] {path}", file=sys.stderr)
+            else:
+                print(f"  [?]    {path} (not found)", file=sys.stderr)
+        if len(paths) > 10:
+            print(f"  ... and {len(paths) - 10} more", file=sys.stderr)
+        print(file=sys.stderr)
+        
+        # Scan filesystem
+        scanner = FileScanner()
+        raw_data = scanner.scan_paths(paths, args.progress)
+        
+        # If dump requested, save and exit
+        if args.dump_data:
+            raw_data.dump_to_file(args.dump_data)
+            sys.exit(0)
+    
+    # =========================================================================
+    # PHASE 2: Process Raw Data and Generate Report
+    # =========================================================================
+    
+    # Determine sort criteria
+    if args.sort_files:
+        sort_by = 'files'
+    elif args.sort_size:
+        sort_by = 'size'
+    else:
+        sort_by = 'extension'
+    
+    # Determine sort order
+    ascending = args.ascending
+    
+    # Parse compound extensions if provided
+    compound_exts = None
+    if args.compound_ext:
+        compound_exts = set(ext.strip() for ext in args.compound_ext.split(','))
+    
+    # Create extension extractor
+    extractor = ExtensionExtractor(
+        max_ext_len=args.max_ext_len,
+        include_hidden_ext=args.include_hidden_ext,
+        allow_numeric_ext=args.allow_numeric_ext,
+        use_compound_ext=not args.no_compound_ext,
+        compound_extensions=compound_exts,
+        relaxed=args.relaxed
+    )
+    
+    # Process raw data
+    file_stats = FileStats(extractor)
+    file_stats.process_raw_data(raw_data)
+    
+    # Print report header
+    if not args.load_data:
+        print("\nPhase 2: Generating Report", file=sys.stderr)
+        print("=" * 48, file=sys.stderr)
+    
+    # Print results
+    print_results(file_stats, sort_by, ascending, args.limit)
 
-EOF
-    exit 0
-}
 
-# Parse arguments
-while [[ $# -gt 0 ]]; do
-    case $1 in
-        -se|-st)
-            SORT_BY="extension"
-            shift
-            ;;
-        -sf)
-            SORT_BY="files"
-            shift
-            ;;
-        -ss)
-            SORT_BY="size"
-            shift
-            ;;
-        -d)
-            SORT_ORDER="desc"
-            shift
-            ;;
-        -a)
-            SORT_ORDER="asc"
-            shift
-            ;;
-        -n)
-            LIMIT="$2"
-            shift 2
-            ;;
-        -p)
-            SHOW_PROGRESS=1
-            shift
-            ;;
-        -i)
-            INPUT_FILE="$2"
-            shift 2
-            ;;
-        --max-ext-len)
-            MAX_EXT_LENGTH="$2"
-            shift 2
-            ;;
-        --include-hidden-ext)
-            INCLUDE_HIDDEN_EXT=1
-            shift
-            ;;
-        --allow-numeric-ext)
-            ALLOW_NUMERIC_EXT=1
-            shift
-            ;;
-        --no-compound-ext)
-            USE_COMPOUND_EXT=0
-            shift
-            ;;
-        --compound-ext)
-            COMPOUND_EXTENSIONS="$2"
-            USE_COMPOUND_EXT=1
-            shift 2
-            ;;
-        --relaxed)
-            EXTRACTION_MODE="relaxed"
-            shift
-            ;;
-        --strict)
-            EXTRACTION_MODE="strict"
-            shift
-            ;;
-        -h|--help)
-            show_help
-            ;;
-        -*)
-            echo "Unrecognized option: $1" >&2
-            echo "Use -h for help" >&2
-            exit 1
-            ;;
-        *)
-            TARGETS+=("$1")
-            shift
-            ;;
-    esac
-done
+if __name__ == '__main__':
+    try:
+        main()
+    except KeyboardInterrupt:
+        print("\n\nInterrupted by user", file=sys.stderr)
+        sys.exit(130)
+    except Exception as e:
+        print(f"\nError: {e}", file=sys.stderr)
+        sys.exit(1)
 
-# If input file specified, read targets from it
-if [ -n "$INPUT_FILE" ]; then
-    if [ ! -f "$INPUT_FILE" ]; then
-        echo "Error: Input file '$INPUT_FILE' does not exist" >&2
-        exit 1
-    fi
-    
-    while IFS= read -r line; do
-        # Skip empty lines and comments
-        [[ -z "$line" || "$line" =~ ^[[:space:]]*# ]] && continue
-        TARGETS+=("$line")
-    done < "$INPUT_FILE"
-fi
-
-# If no targets specified, use current directory
-if [ ${#TARGETS[@]} -eq 0 ]; then
-    TARGETS=(".")
-fi
-
-echo "File Statistics Analysis"
-echo "================================================"
-echo "Analyzing ${#TARGETS[@]} target(s):"
-for target in "${TARGETS[@]}"; do
-    if [ -d "$target" ]; then
-        echo "  [DIR]  $target"
-    elif [ -f "$target" ]; then
-        echo "  [FILE] $target"
-    else
-        echo "  [NOT FOUND] $target" >&2
-    fi
-done
-echo ""
-
-# Associative arrays to count files and sizes by extension
-declare -A file_count
-declare -A file_size
-
-# Function to extract file extension using improved heuristics
-extract_extension() {
-    local filename="$1"
-    
-    # Relaxed mode: just take everything after last dot
-    if [ "$EXTRACTION_MODE" = "relaxed" ]; then
-        if [[ "$filename" == *.* ]]; then
-            local ext="${filename##*.}"
-            # Still convert to lowercase and filter empty
-            if [ -n "$ext" ]; then
-                echo "${ext,,}"
-            else
-                echo "(no extension)"
-            fi
-        else
-            echo "(no extension)"
-        fi
-        return
-    fi
-    
-    # Strict mode: apply heuristics
-    
-    # Handle hidden files (starting with . and having no other dots)
-    if [[ "$filename" =~ ^\.[^.]+$ ]]; then
-        # File like .bashrc, .vimrc
-        if [ $INCLUDE_HIDDEN_EXT -eq 1 ]; then
-            # Treat as extension
-            local ext="${filename#.}"
-            echo "${ext,,}"
-        else
-            echo "(no extension)"
-        fi
-        return
-    fi
-    
-    # Check if file has any dot
-    if [[ "$filename" != *.* ]]; then
-        echo "(no extension)"
-        return
-    fi
-    
-    # Handle compound extensions if enabled
-    if [ $USE_COMPOUND_EXT -eq 1 ]; then
-        # Build regex pattern from pipe-separated or comma-separated list
-        local exts="${COMPOUND_EXTENSIONS//,/|}"  # Convert comma to pipe
-        local pattern="\\.(${exts})$"
-        if [[ "$filename" =~ $pattern ]]; then
-            # Extract compound extension (e.g., tar.gz)
-            local compound="${BASH_REMATCH[0]#.}"
-            echo "$compound"
-            return
-        fi
-    fi
-    
-    # Extract last extension
-    local ext="${filename##*.}"
-    
-    # Validation rules (strict mode):
-    
-    # 1. Extension too long
-    if [ ${#ext} -gt $MAX_EXT_LENGTH ]; then
-        echo "(no extension)"
-        return
-    fi
-    
-    # 2. Extension is purely numeric
-    if [ $ALLOW_NUMERIC_EXT -eq 0 ] && [[ "$ext" =~ ^[0-9]+$ ]]; then
-        echo "(no extension)"
-        return
-    fi
-    
-    # 3. Extension contains only special characters or is empty
-    if [[ ! "$ext" =~ [a-zA-Z] ]]; then
-        echo "(no extension)"
-        return
-    fi
-    
-    # Valid extension - convert to lowercase
-    echo "${ext,,}"
-}
-
-# Function to process a single file (optimized version)
-process_file() {
-    local filepath="$1"
-    local filesize="$2"
-    
-    # Extract filename from path (avoid basename subprocess)
-    local filename="${filepath##*/}"
-    
-    # Extract extension using improved heuristics
-    extension=$(extract_extension "$filename")
-    
-    # Increment counter and total size
-    ((file_count[$extension]++))
-    ((file_size[$extension]+=filesize))
-}
-
-# Process each target
-file_counter=0
-for target in "${TARGETS[@]}"; do
-    if [ -d "$target" ]; then
-        # Process directory recursively
-        # Use find -xdev to avoid crossing filesystem boundaries (NFS, USB, etc.)
-        # Use find -printf to get size and path in one pass (much faster than stat for each file)
-        while IFS= read -r line; do
-            # Parse size and filepath from find output
-            size="${line%% *}"
-            filepath="${line#* }"
-            process_file "$filepath" "$size"
-            
-            # Show progress every 1000 files if enabled
-            if [ $SHOW_PROGRESS -eq 1 ]; then
-                ((file_counter++))
-                if ((file_counter % 1000 == 0)); then
-                    echo -ne "\rProcessed $file_counter files..." >&2
-                fi
-            fi
-        done < <(find "$target" -xdev -type f -printf '%s %p\n' 2>/dev/null)
-    elif [ -f "$target" ]; then
-        # Process single file - use stat only for single files
-        size=$(stat -c "%s" "$target" 2>/dev/null)
-        if [ -n "$size" ]; then
-            process_file "$target" "$size"
-            ((file_counter++))
-        fi
-    else
-        echo "Warning: '$target' is not a valid file or directory" >&2
-    fi
-done
-
-# Clear progress line if shown
-if [ $SHOW_PROGRESS -eq 1 ] && [ $file_counter -gt 0 ]; then
-    echo -ne "\rProcessed $file_counter files... Done!\n" >&2
-fi
-
-# Check if any files were found
-if [ ${#file_count[@]} -eq 0 ]; then
-    echo "No files found in the specified target(s)."
-    exit 0
-fi
-
-# Function to format sizes in human-readable format
-format_size() {
-    local size=$1
-    local units=("B" "KB" "MB" "GB" "TB")
-    local unit_index=0
-    local size_float=$size
-    
-    while (( $(echo "$size_float >= 1024" | bc -l) )) && [ $unit_index -lt 4 ]; do
-        size_float=$(echo "scale=2; $size_float / 1024" | bc)
-        ((unit_index++))
-    done
-    
-    printf "%.2f %s" "$size_float" "${units[$unit_index]}"
-}
-
-# Calculate totals
-total_files=0
-total_size=0
-
-for ext in "${!file_count[@]}"; do
-    ((total_files+=file_count[$ext]))
-    ((total_size+=file_size[$ext]))
-done
-
-# Create temporary array for sorting
-declare -a sorted_extensions
-
-# Sort based on selected option
-case $SORT_BY in
-    extension)
-        # Sort alphabetically by extension
-        if [ "$SORT_ORDER" = "desc" ]; then
-            mapfile -t sorted_extensions < <(printf "%s\n" "${!file_count[@]}" | sort -r)
-        else
-            mapfile -t sorted_extensions < <(printf "%s\n" "${!file_count[@]}" | sort)
-        fi
-        ;;
-    files)
-        # Sort by number of files
-        if [ "$SORT_ORDER" = "desc" ]; then
-            mapfile -t sorted_extensions < <(
-                for ext in "${!file_count[@]}"; do
-                    printf "%d\t%s\n" "${file_count[$ext]}" "$ext"
-                done | sort -rn | cut -f2-
-            )
-        else
-            mapfile -t sorted_extensions < <(
-                for ext in "${!file_count[@]}"; do
-                    printf "%d\t%s\n" "${file_count[$ext]}" "$ext"
-                done | sort -n | cut -f2-
-            )
-        fi
-        ;;
-    size)
-        # Sort by size
-        if [ "$SORT_ORDER" = "desc" ]; then
-            mapfile -t sorted_extensions < <(
-                for ext in "${!file_count[@]}"; do
-                    printf "%d\t%s\n" "${file_size[$ext]}" "$ext"
-                done | sort -rn | cut -f2-
-            )
-        else
-            mapfile -t sorted_extensions < <(
-                for ext in "${!file_count[@]}"; do
-                    printf "%d\t%s\n" "${file_size[$ext]}" "$ext"
-                done | sort -n | cut -f2-
-            )
-        fi
-        ;;
-esac
-
-# Print table header
-printf "%-20s %10s %8s %15s %15s %8s\n" "EXTENSION" "FILES" "%" "SIZE (bytes)" "SIZE" "%"
-printf "%-20s %10s %8s %15s %15s %8s\n" "--------------------" "----------" "--------" "---------------" "---------------" "--------"
-
-# Print statistics
-counter=0
-shown_files=0
-shown_size=0
-
-for ext in "${sorted_extensions[@]}"; do
-    # Check limit if specified
-    if [ $LIMIT -gt 0 ] && [ $counter -ge $LIMIT ]; then
-        break
-    fi
-    
-    count=${file_count[$ext]}
-    size=${file_size[$ext]}
-    formatted_size=$(format_size $size)
-    
-    # Accumulate shown totals
-    ((shown_files+=count))
-    ((shown_size+=size))
-    
-    # Calculate percentages (always relative to TOTAL)
-    count_percent=$(echo "scale=2; ($count * 100) / $total_files" | bc)
-    
-    # Format output based on whether total_size is zero
-    if [ $total_size -eq 0 ]; then
-        # No meaningful size percentage when total is zero
-        printf "%-20s %10d %7.2f%% %15d %15s %8s\n" "$ext" "$count" "$count_percent" "$size" "$formatted_size" "-"
-    else
-        size_percent=$(echo "scale=2; ($size * 100) / $total_size" | bc)
-        printf "%-20s %10d %7.2f%% %15d %15s %7.2f%%\n" "$ext" "$count" "$count_percent" "$size" "$formatted_size" "$size_percent"
-    fi
-    
-    ((counter++))
-done
-
-# Print separator and totals
-echo ""
-
-# Check if result was limited
-if [ $LIMIT -gt 0 ] && [ $counter -lt ${#sorted_extensions[@]} ]; then
-    # Show ellipsis to indicate more rows exist
-    printf "%-20s %10s %8s %15s %15s %8s\n" "(...)" "" "" "" "" ""
-    printf "%-20s %10s %8s %15s %15s %8s\n" "--------------------" "----------" "--------" "---------------" "---------------" "--------"
-    
-    # Show subtotal for displayed rows
-    formatted_shown=$(format_size $shown_size)
-    shown_count_percent=$(echo "scale=2; ($shown_files * 100) / $total_files" | bc)
-    
-    if [ $total_size -eq 0 ]; then
-        # No meaningful size percentage when total is zero
-        printf "%-20s %10d %7.2f%% %15d %15s %8s\n" "SUBTOTAL (shown)" "$shown_files" "$shown_count_percent" "$shown_size" "$formatted_shown" "-"
-    else
-        shown_size_percent=$(echo "scale=2; ($shown_size * 100) / $total_size" | bc)
-        printf "%-20s %10d %7.2f%% %15d %15s %7.2f%%\n" "SUBTOTAL (shown)" "$shown_files" "$shown_count_percent" "$shown_size" "$formatted_shown" "$shown_size_percent"
-    fi
-    
-    # Show grand total
-    formatted_total=$(format_size $total_size)
-    total_count_percent=$(echo "scale=2; 100.00" | bc)
-    
-    if [ $total_size -eq 0 ]; then
-        # No meaningful size percentage when total is zero
-        printf "%-20s %10d %7.2f%% %15d %15s %8s\n" "TOTAL (all)" "$total_files" "$total_count_percent" "$total_size" "$formatted_total" "-"
-    else
-        total_size_percent=$(echo "scale=2; 100.00" | bc)
-        printf "%-20s %10d %7.2f%% %15d %15s %7.2f%%\n" "TOTAL (all)" "$total_files" "$total_count_percent" "$total_size" "$formatted_total" "$total_size_percent"
-    fi
-else
-    # All rows shown, just show total
-    printf "%-20s %10s %8s %15s %15s %8s\n" "--------------------" "----------" "--------" "---------------" "---------------" "--------"
-    formatted_total=$(format_size $total_size)
-    total_count_percent=$(echo "scale=2; 100.00" | bc)
-    
-    if [ $total_size -eq 0 ]; then
-        # No meaningful size percentage when total is zero
-        printf "%-20s %10d %7.2f%% %15d %15s %8s\n" "TOTAL" "$total_files" "$total_count_percent" "$total_size" "$formatted_total" "-"
-    else
-        total_size_percent=$(echo "scale=2; 100.00" | bc)
-        printf "%-20s %10d %7.2f%% %15d %15s %7.2f%%\n" "TOTAL" "$total_files" "$total_count_percent" "$total_size" "$formatted_total" "$total_size_percent"
-    fi
-fi
