@@ -432,7 +432,25 @@ The player is optimized for:
 
 ## 📄 License
 
-This project is open source and available for personal and commercial use.
+This project is licensed under the **GNU General Public License v3.0** (GPL-3.0).
+
+### What this means:
+
+- ✅ **Free to use** - You can use this software for any purpose
+- ✅ **Free to modify** - You can modify the source code
+- ✅ **Free to distribute** - You can share copies of the software
+- ✅ **Source code available** - You must provide source code when distributing
+- ✅ **Copyleft** - Derivative works must also be GPL-licensed
+
+### Key requirements:
+
+- If you distribute this software, you must include the GPL license
+- If you modify this software, you must make your changes available under GPL
+- You must preserve copyright notices and license information
+
+For the complete license text, see [LICENSE.md](LICENSE.md).
+
+For more information about GPL, visit: https://www.gnu.org/licenses/gpl-3.0.html
 
 ## 🆘 Support
 
