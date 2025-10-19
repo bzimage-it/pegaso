@@ -1,0 +1,200 @@
+#!/bin/bash
+
+PEGASO_START_SCRIPT_PWD=$(pwd)
+
+# this is a code snipped:
+# from http://stackoverflow.com/questions/59895/can-a-bash-script-tell-what-directory-its-stored-in
+# to understand what directory it's stored in bash script itself
+
+PEGASO_SOURCE="${BASH_SOURCE[0]}"
+while [ -h "$PEGASO_SOURCE" ]; do # resolve $SOURCE until the file is no longer a symlink
+  PEGASO_DIR="$( cd -P "$( dirname "$PEGASO_SOURCE" )" && pwd )"
+  PEGASO_SOURCE="$(readlink "$PEGASO_SOURCE")"
+  [[ $PEGASO_SOURCE != /* ]] && PEGASO_SOURCE="$PEGASO_DIR/$PEGASO_SOURCE" # if $SOURCE was a relative symlink, we need to resolve it relative to the path where the symlink file was located
+done
+PEGASO_SCRIPT_DIR="$( cd -P "$( dirname "$PEGASO_SOURCE" )" && pwd )"
+PEGASO_SCRIPT_FILE=$(basename "$PEGASO_SOURCE")
+# end of snipped
+
+cd "$PEGASO_SCRIPT_DIR"
+cd .. || exit 1
+export PEGASO_ROOT="$(pwd)"
+
+PEGASO_PARENT_ROOT="$(dirname "$PEGASO_ROOT")"
+
+# Script to concatenate multiple images horizontally or vertically
+# Usage: ./pegaso-img-concat [-v|-h] [-o output.jpg] img1 img2 [img3 ...]
+# -h: horizontal mode (default)
+# -v: vertical mode
+# -o: output filename
+
+# Check if ImageMagick is installed
+if ! command -v convert &> /dev/null; then
+    echo "Error: ImageMagick is not installed."
+    echo "Install it with: sudo apt install imagemagick"
+    exit 1
+fi
+
+# Initialize variables
+VERTICAL=false
+HORIZONTAL=true
+OUTPUT=""
+
+# Parse parameters
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -v|--vertical)
+            VERTICAL=true
+            HORIZONTAL=false
+            shift
+            ;;
+        -h|--horizontal)
+            HORIZONTAL=true
+            VERTICAL=false
+            shift
+            ;;
+        -o|--output)
+            if [ -z "$2" ] || [[ "$2" == -* ]]; then
+                echo "Error: -o option requires an output filename"
+                exit 1
+            fi
+            OUTPUT="$2"
+            shift 2
+            ;;
+        --help)
+            echo "Usage: $PEGASO_SCRIPT_FILE [-h|-v] [-o output_name] <img1> <img2> [img3 ...]"
+            echo "Options:"
+            echo "  -h, --horizontal  Horizontal concatenation (default)"
+            echo "  -v, --vertical    Vertical concatenation"
+            echo "  -o, --output      Output filename (default: images-concat-h.jpg or images-concat-v.jpg)"
+            echo "  --help            Show this help"
+            echo ""
+            echo "Examples:"
+            echo "  $PEGASO_SCRIPT_FILE photo1.jpg photo2.png                                  # Horizontal (default)"
+            echo "  $PEGASO_SCRIPT_FILE -h photo1.jpg photo2.png photo3.jpg                    # Horizontal (explicit)"
+            echo "  $PEGASO_SCRIPT_FILE -v photo1.jpg photo2.png                               # Vertical"
+            echo "  $PEGASO_SCRIPT_FILE -o result.jpg photo1.jpg photo2.png photo3.jpg         # Custom output name"
+            echo "  $PEGASO_SCRIPT_FILE -v -o stacked.jpg img1.png img2.png img3.png img4.png  # Vertical with custom output"
+            exit 0
+            ;;
+        -*)
+            echo "Unknown option: $1"
+            echo "Use --help to see available options"
+            exit 1
+            ;;
+        *)
+            break
+            ;;
+    esac
+done
+
+# Check remaining parameters (image files)
+if [ $# -lt 2 ]; then
+    echo "Usage: $PEGASO_SCRIPT_FILE [-h|-v] [-o output_name] <img1> <img2> [img3 ...]"
+    echo "Use --help to see full help"
+    exit 1
+fi
+
+# Collect all image files
+IMAGES=()
+for arg in "$@"; do
+    if [ ! -f "$arg" ]; then
+        echo "Error: File '$arg' does not exist."
+        exit 1
+    fi
+    IMAGES+=("$arg")
+done
+
+# Check if we have at least 2 images
+if [ ${#IMAGES[@]} -lt 2 ]; then
+    echo "Error: At least 2 images are required."
+    exit 1
+fi
+
+# Set default output name if not specified
+if [ -z "$OUTPUT" ]; then
+    if [ "$VERTICAL" = true ]; then
+        OUTPUT="images-concat-v.jpg"
+    else
+        OUTPUT="images-concat-h.jpg"
+    fi
+fi
+
+echo "Processing images..."
+if [ "$VERTICAL" = true ]; then
+    echo "Mode: Vertical"
+else
+    echo "Mode: Horizontal"
+fi
+echo "Number of images: ${#IMAGES[@]}"
+for i in "${!IMAGES[@]}"; do
+    echo "  Image $((i+1)): ${IMAGES[$i]}"
+done
+echo "Output file: $OUTPUT"
+echo ""
+
+# Determine target dimension based on mode
+if [ "$VERTICAL" = true ]; then
+    # For vertical alignment, find the minimum width
+    echo "Analyzing image widths..."
+    MIN_WIDTH=-1
+    for img in "${IMAGES[@]}"; do
+        WIDTH=$(identify -format "%w" "$img")
+        echo "  ${img}: ${WIDTH}px"
+        if [ $MIN_WIDTH -eq -1 ] || [ $WIDTH -lt $MIN_WIDTH ]; then
+            MIN_WIDTH=$WIDTH
+        fi
+    done
+    echo "Using target width: ${MIN_WIDTH}px"
+    echo ""
+    
+    # Build convert command with all images resized to target width
+    CONVERT_CMD="convert"
+    for img in "${IMAGES[@]}"; do
+        CONVERT_CMD="$CONVERT_CMD \( \"$img\" -resize \"${MIN_WIDTH}x\" \)"
+    done
+    CONVERT_CMD="$CONVERT_CMD -append \"$OUTPUT\""
+else
+    # For horizontal alignment, find the minimum height
+    echo "Analyzing image heights..."
+    MIN_HEIGHT=-1
+    for img in "${IMAGES[@]}"; do
+        HEIGHT=$(identify -format "%h" "$img")
+        echo "  ${img}: ${HEIGHT}px"
+        if [ $MIN_HEIGHT -eq -1 ] || [ $HEIGHT -lt $MIN_HEIGHT ]; then
+            MIN_HEIGHT=$HEIGHT
+        fi
+    done
+    echo "Using target height: ${MIN_HEIGHT}px"
+    echo ""
+    
+    # Build convert command with all images resized to target height
+    CONVERT_CMD="convert"
+    for img in "${IMAGES[@]}"; do
+        CONVERT_CMD="$CONVERT_CMD \( \"$img\" -resize \"x${MIN_HEIGHT}\" \)"
+    done
+    CONVERT_CMD="$CONVERT_CMD +append \"$OUTPUT\""
+fi
+
+# Execute the convert command
+eval $CONVERT_CMD
+
+if [ $? -eq 0 ]; then
+    echo ""
+    if [ "$VERTICAL" = true ]; then
+        echo "✓ Images concatenated vertically successfully!"
+    else
+        echo "✓ Images concatenated horizontally successfully!"
+    fi
+    echo ""
+    echo "Output file created: $OUTPUT"
+    
+    # Show final dimensions
+    FINAL_DIMENSIONS=$(identify -format "%wx%h" "$OUTPUT")
+    echo "Final dimensions: ${FINAL_DIMENSIONS}px"
+else
+    echo ""
+    echo "✗ Error during image processing."
+    exit 1
+fi
+
