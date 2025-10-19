@@ -1,0 +1,30 @@
+{
+  "title": "Title of the example album",
+  "common": {
+      "settings": {
+        "defaultVolume": 0.7,
+        "defaultPlaybackMode": "repeat",
+        "debug": false
+      },
+    "features": {
+      "playbackSpeeds": [0.75, 1.0, 1.5, 2.0]
+    },
+    "ui": {
+      "theme": "default",
+      "showFileSize": true,
+      "enableAnimations": false
+    }
+  },
+  "albums": {
+    "Album1": {
+      "title": "First Album",
+      "description": "First Album",
+      "tracks": []
+    },
+    "Album2": {
+      "title": "Second Album",
+      "description": "Second Album",
+      "tracks": []        
+    }    
+  }
+}
