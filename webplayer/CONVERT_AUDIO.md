@@ -1,163 +1,180 @@
-# 🎵 Guida Rapida - Audio Player
+# 🎵 Quick Start Guide - Audio Player
 
-## 📋 Setup Iniziale
+## 📋 Initial Setup
 
-### 1. Organizza i File Originali
+### 1. Organize Original Files
 
-Metti i tuoi file audio in `media-orig/` organizzati per cartelle:
+Put your audio files in `media-orig/` organized by folders:
 
 ```bash
 media-orig/
-├── Album Rock/
+├── Rock Album/
 │   ├── track_001.aac
 │   ├── track_002.aac
 │   └── track_003.aac
 ├── Podcast/
-│   └── episodio_2024.m4a
-└── Audiolibro/
-    ├── capitolo1.aac
-    └── capitolo2.aac
+│   └── episode_2024.m4a
+└── Audiobook/
+    ├── chapter1.aac
+    └── chapter2.aac
 ```
 
-### 2. Converti i File
+### 2. Convert Files
 
-Esegui lo script di conversione:
+Run the conversion script:
 
 ```bash
-# Converti TUTTO
-./convert_media.sh
+# Convert from source directory to target directory
+./convert_audio.sh media-orig/RockAlbum media/RockAlbum
 
-# Oppure converti solo una cartella specifica
-./convert_media.sh "Album Rock"
-./convert_media.sh Podcast
+# With quality profile
+./convert_audio.sh media-orig/Podcast media/Podcast --profile podcast
+
+# Fix AAC Duration/Seeking Issues
+
+```bash
+# Fix AAC files with corrupted metadata for proper seeking and playback
+./convert_audio.sh media-orig/Audiobook media/Audiobook --fix-duration-seeking-aac
 ```
 
-### 3. Avvia il Server
+#### Available Quality Profiles:
+
+- **`mobile`** - 32kbps (~7MB per 30min) - Very slow connections
+- **`bandwidth`** - 48kbps (~11MB per 30min) - Economic hosting  
+- **`web`** - 64kbps (~15MB per 30min) - Standard web streaming (default)
+- **`podcast`** - 80kbps (~18MB per 30min) - Spoken content
+- **`quality`** - 96kbps (~22MB per 30min) - High quality
+- **`archive`** - 128kbps (~30MB per 30min) - Maximum quality
+
+### 3. Start the Server
 
 ```bash
 ./START_SERVER.sh
 ```
 
-Oppure manualmente:
+Or manually:
 ```bash
 php -S localhost:8000 serve_audio.php
 ```
 
-### 4. Apri nel Browser
+### 4. Open in Browser
 
-Vai su: **http://localhost:8000**
-
----
-
-## 🔄 Aggiornamento File
-
-### Quando aggiungi nuovi file:
-
-1. Aggiungi i file in `media-orig/NuovaCartella/`
-2. Esegui: `./convert_media.sh NuovaCartella`
-3. Ricarica la pagina del browser
-
-### Quando modifichi file esistenti:
-
-1. Sostituisci i file in `media-orig/`
-2. Esegui: `./convert_media.sh NomeCartella`
-3. Lo script riconverte solo i file modificati
+Go to: **http://localhost:8000**
 
 ---
 
-## 📁 Struttura File
+## 🔄 File Updates
+
+### When adding new files:
+
+1. Add files to `media-orig/NewFolder/`
+2. Run: `./convert_audio.sh media-orig/NewFolder media/NewFolder`
+3. Reload the browser page
+
+### When modifying existing files:
+
+1. Replace files in `media-orig/`
+2. Run: `./convert_audio.sh media-orig/FolderName media/FolderName`
+3. The script will ask if you want to overwrite existing files
+
+---
+
+## 📁 File Structure
 
 ```
 player/
-├── index.php                 # Pagina principale
-├── style.css                 # Stili
-├── script.js                 # Logica player
-├── serve_audio.php          # Server con range requests
-├── START_SERVER.sh          # Script avvio server
-├── convert_media.sh         # Script conversione
+├── index.php                 # Main page
+├── style.css                 # Styles
+├── script.js                 # Player logic
+├── serve_audio.php          # Server with range requests
+├── START_SERVER.sh          # Server startup script
+├── convert_audio.sh         # Conversion script
 │
-├── media-orig/              # ← I TUOI FILE ORIGINALI
-│   ├── Cartella1/
-│   └── Cartella2/
+├── media-orig/              # ← YOUR ORIGINAL FILES
+│   ├── Folder1/
+│   └── Folder2/
 │
-└── media/                   # ← File per il player (generati)
-    ├── Cartella1/
-    │   ├── parte1.aac
-    │   └── parte2.aac
-    └── Cartella2/
-        └── parte1.aac
+└── media/                   # ← Files for the player (generated)
+    ├── Folder1/
+    │   ├── part1.aac
+    │   └── part2.aac
+    └── Folder2/
+        └── part1.aac
 ```
 
 ---
 
-## 🛠️ Comandi Utili
+## 🛠️ Useful Commands
 
-### Conversione
+### Conversion
 
 ```bash
-# Converti tutto
-./convert_media.sh
+# Convert from source to target directory
+./convert_audio.sh media-orig/FolderName media/FolderName
 
-# Converti una cartella
-./convert_media.sh "Nome Cartella"
+# With quality profile
+./convert_audio.sh media-orig/FolderName media/FolderName --profile quality
 
-# Riconverti tutto (aggiorna solo file modificati)
-./convert_media.sh
+# Fix WhatsApp AAC files
+./convert_audio.sh media-orig/FolderName media/FolderName --fix-whatsapp-aac
+
+# Reorder files (file 2 becomes part1, file 3 becomes part2, file 1 becomes part3)
+./convert_audio.sh media-orig/FolderName media/FolderName 2 3 1
 ```
 
 ### Server
 
 ```bash
-# Avvia server
+# Start server
 ./START_SERVER.sh
 
-# O manualmente con porta personalizzata
+# Or manually with custom port
 php -S localhost:3000 serve_audio.php
 ```
 
-### Gestione File
+### File Management
 
 ```bash
-# Vedi cosa c'è in media-orig
+# See what's in media-orig
 ls -la media-orig/
 
-# Vedi cosa c'è in media (convertiti)
+# See what's in media (converted)
 ls -la media/
 
-# Spazio occupato
+# Space used
 du -sh media-orig/
 du -sh media/
 ```
 
 ---
 
-## ⚠️ Note Importanti
+## ⚠️ Important Notes
 
-### ✅ DA FARE:
-- Inserire file audio in `media-orig/`
-- Usare sottocartelle per organizzare (ogni cartella = album/playlist)
-- Eseguire `convert_media.sh` dopo ogni aggiunta
+### ✅ TO DO:
+- Put audio files in `media-orig/`
+- Use subfolders to organize (each folder = album/playlist)
+- Run `convert_audio.sh` after every addition
 
-### ❌ NON FARE:
-- NON modificare manualmente i file in `media/` (vengono rigenerati)
-- NON eliminare `media-orig/` (è il tuo backup!)
-- NON mettere file direttamente in `media-orig/` (usa sottocartelle)
+### ❌ DON'T DO:
+- DON'T manually modify files in `media/` (they get regenerated)
+- DON'T delete `media-orig/` (it's your backup!)
+- DON'T put files directly in `media-orig/` (use subfolders)
 
 ---
 
-## 🎯 Risoluzione Problemi
+## 🎯 Troubleshooting
 
-### Il seek non funziona correttamente
-→ Riconverti i file: `./convert_media.sh`
+### Seek doesn't work correctly
+→ Reconvert files: `./convert_audio.sh media-orig/FolderName media/FolderName`
 
-### Nessuna cartella visualizzata
-→ Verifica che `media/` contenga sottocartelle con file audio
+### No folders displayed
+→ Check that `media/` contains subfolders with audio files
 
-### File non trovato (404)
-→ Controlla che il server sia avviato con `serve_audio.php`
+### File not found (404)
+→ Make sure server is started with `serve_audio.php`
 
-### ffmpeg non trovato
-→ Installa ffmpeg:
+### ffmpeg not found
+→ Install ffmpeg:
 ```bash
 # Ubuntu/Debian
 sudo apt-get install ffmpeg
@@ -171,23 +188,23 @@ sudo pacman -S ffmpeg
 
 ---
 
-## 📊 Esempio Completo
+## 📊 Complete Example
 
 ```bash
-# 1. Copia i tuoi file
-cp -r ~/Audio/MioAlbum media-orig/
+# 1. Copy your files
+cp -r ~/Audio/MyAlbum media-orig/
 
-# 2. Converti
-./convert_media.sh MioAlbum
+# 2. Convert
+./convert_audio.sh media-orig/MyAlbum media/MyAlbum
 
-# 3. Avvia server
+# 3. Start server
 ./START_SERVER.sh
 
-# 4. Apri browser
+# 4. Open browser
 firefox http://localhost:8000
 ```
 
 ---
 
-**Buon ascolto! 🎶**
+**Happy listening! 🎶**
 

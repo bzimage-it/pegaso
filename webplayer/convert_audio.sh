@@ -2,12 +2,12 @@
 #
 # Audio conversion script with custom structure and metadata
 #
-# Usage: ./convert_audio.sh <source-dir> <target-base> [--profile <profile>] [--fix-whatsapp-aac] [permutation...]
+# Usage: ./convert_audio.sh <source-dir> <target-base> [--profile <profile>] [--fix-duration-seeking-aac] [permutation...]
 #
 # Examples:
 #   ./convert_audio.sh media-orig/2025-10-03 media/FORM-BIBLIT-25-26
 #   ./convert_audio.sh ~/audio/lesson1 media/course --profile quality 2 3 1
-#   ./convert_audio.sh media-orig/2025-10-03 media/FORM-BIBLIT-25-26 --fix-whatsapp-aac
+#   ./convert_audio.sh media-orig/2025-10-03 media/FORM-BIBLIT-25-26 --fix-duration-seeking-aac
 #
 
 # Colors for output
@@ -80,7 +80,7 @@ echo ""
 if [ $# -lt 2 ]; then
     print_error "Insufficient arguments!"
     echo ""
-    echo "Usage: $0 <source-dir> <target-base> [--profile <profile>] [--fix-whatsapp-aac] [permutation...]"
+    echo "Usage: $0 <source-dir> <target-base> [--profile <profile>] [--fix-duration-seeking-aac] [permutation...]"
     echo ""
     echo "Available profiles:"
     echo "  mobile     - 32kbps (~7MB per 30min)  - Very slow connections"
@@ -91,12 +91,12 @@ if [ $# -lt 2 ]; then
     echo "  archive    - 128kbps (~30MB per 30min) - Maximum quality"
     echo ""
     echo "Special options:"
-    echo "  --fix-whatsapp-aac  - Fix WhatsApp AAC files for proper seeking and playback"
+    echo "  --fix-duration-seeking-aac  - Fix AAC files with corrupted metadata for proper seeking and playback"
     echo ""
     echo "Examples:"
     echo "  $0 media-orig/2025-10-03 media/FORM-BIBLIT-25-26"
     echo "  $0 media-orig/2025-10-03 media/FORM-BIBLIT-25-26 --profile bandwidth"
-    echo "  $0 media-orig/2025-10-03 media/FORM-BIBLIT-25-26 --fix-whatsapp-aac"
+    echo "  $0 media-orig/2025-10-03 media/FORM-BIBLIT-25-26 --fix-duration-seeking-aac"
     echo "  $0 ~/audio/lesson1 media/course --profile quality 2 3 1"
     echo ""
     exit 1
@@ -119,9 +119,9 @@ PROFILES["archive"]="128k"
 DEFAULT_PROFILE="web"
 PROFILE="$DEFAULT_PROFILE"
 PERMUTATION=()
-FIX_WHATSAPP_AAC=false
+FIX_DURATION_SEEKING_AAC=false
 
-# Parse arguments for --profile and --fix-whatsapp-aac
+# Parse arguments for --profile and --fix-duration-seeking-aac
 while [[ $# -gt 0 ]]; do
     case $1 in
         --profile)
@@ -132,8 +132,8 @@ while [[ $# -gt 0 ]]; do
             PROFILE="${1#*=}"
             shift
             ;;
-        --fix-whatsapp-aac)
-            FIX_WHATSAPP_AAC=true
+        --fix-duration-seeking-aac)
+            FIX_DURATION_SEEKING_AAC=true
             shift
             ;;
         *)
@@ -216,8 +216,8 @@ fi
 print_info "Source: $SOURCE_DIR"
 print_info "Target: $TARGET_DIR"
 print_info "Profile: $PROFILE (${BITRATE})"
-if [ "$FIX_WHATSAPP_AAC" = true ]; then
-    print_info "WhatsApp AAC fix: ENABLED"
+if [ "$FIX_DURATION_SEEKING_AAC" = true ]; then
+    print_info "Duration/Seeking AAC fix: ENABLED"
 fi
 echo ""
 
@@ -338,8 +338,8 @@ if [ "$USE_PERMUTATION" = true ]; then
         DEST_FILE="$TARGET_DIR/$PART_NAME"
         
         SOURCE_NAME=$(basename "$SOURCE_FILE")
-        if [ "$FIX_WHATSAPP_AAC" = true ]; then
-            echo -n "  🔧 [$DEST_NUM/$NUM_FILES] $SOURCE_NAME → $PART_NAME (WhatsApp fix) ... "
+        if [ "$FIX_DURATION_SEEKING_AAC" = true ]; then
+            echo -n "  🔧 [$DEST_NUM/$NUM_FILES] $SOURCE_NAME → $PART_NAME (duration/seeking fix) ... "
         else
             echo -n "  🔄 [$DEST_NUM/$NUM_FILES] $SOURCE_NAME → $PART_NAME ... "
         fi
@@ -351,8 +351,8 @@ if [ "$USE_PERMUTATION" = true ]; then
         SOURCE_BITRATE=$(echo "$SOURCE_INFO" | cut -d'|' -f3)
         
         # Convert with metadata and lexicographic ordering (web optimized)
-        if [ "$FIX_WHATSAPP_AAC" = true ]; then
-            # WhatsApp AAC fix: copy codec without re-encoding to fix seeking issues
+        if [ "$FIX_DURATION_SEEKING_AAC" = true ]; then
+            # Duration/Seeking AAC fix: copy codec without re-encoding to fix seeking issues
             FFMPEG_OUTPUT=$(ffmpeg -i "$SOURCE_FILE" \
                 -c:a copy \
                 -metadata title="Part $DEST_NUM" \
@@ -399,8 +399,8 @@ else
         PART_NAME=$(printf "$NAME_FORMAT" "$FILE_NUM" "$FILE_NUM")
         DEST_FILE="$TARGET_DIR/$PART_NAME"
         
-        if [ "$FIX_WHATSAPP_AAC" = true ]; then
-            echo -n "  🔧 [$FILE_NUM/$NUM_FILES] $(basename "$SOURCE_FILE") → $PART_NAME (WhatsApp fix) ... "
+        if [ "$FIX_DURATION_SEEKING_AAC" = true ]; then
+            echo -n "  🔧 [$FILE_NUM/$NUM_FILES] $(basename "$SOURCE_FILE") → $PART_NAME (duration/seeking fix) ... "
         else
             echo -n "  🔄 [$FILE_NUM/$NUM_FILES] $(basename "$SOURCE_FILE") → $PART_NAME ... "
         fi
@@ -412,8 +412,8 @@ else
         SOURCE_BITRATE=$(echo "$SOURCE_INFO" | cut -d'|' -f3)
         
         # Convert with metadata and lexicographic ordering (web optimized)
-        if [ "$FIX_WHATSAPP_AAC" = true ]; then
-            # WhatsApp AAC fix: copy codec without re-encoding to fix seeking issues
+        if [ "$FIX_DURATION_SEEKING_AAC" = true ]; then
+            # Duration/Seeking AAC fix: copy codec without re-encoding to fix seeking issues
             FFMPEG_OUTPUT=$(ffmpeg -i "$SOURCE_FILE" \
                 -c:a copy \
                 -metadata title="Part $FILE_NUM" \
@@ -460,8 +460,8 @@ echo ""
 
 if [ $ERROR -eq 0 ]; then
     print_success "COMPLETED! $SUCCESS files converted"
-    if [ "$FIX_WHATSAPP_AAC" = true ]; then
-        print_info "WhatsApp AAC fix applied - files optimized for web playback"
+    if [ "$FIX_DURATION_SEEKING_AAC" = true ]; then
+        print_info "Duration/Seeking AAC fix applied - files optimized for web playback"
     fi
 else
     print_warning "Completed with errors: $SUCCESS converted, $ERROR errors"
