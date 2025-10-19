@@ -124,7 +124,7 @@ function getAudioMetadata($filePath, $filename) {
     $extension = strtolower(pathinfo($filename, PATHINFO_EXTENSION));
     
     // Try to read metadata using ffprobe if available
-    if (function_exists('shell_exec')) {
+    if (function_exists('shell_exec') && !in_array('shell_exec', explode(',', ini_get('disable_functions')))) {
         $command = "ffprobe -v quiet -print_format json -show_format \"$filePath\" 2>/dev/null";
         $output = @shell_exec($command);
         
@@ -132,6 +132,48 @@ function getAudioMetadata($filePath, $filename) {
             $metadata = json_decode($output, true);
             if (isset($metadata['format']['tags']['title'])) {
                 return trim($metadata['format']['tags']['title']);
+            }
+        }
+    }
+    
+    // Alternative: Try using exec() if shell_exec is disabled
+    if (function_exists('exec') && !in_array('exec', explode(',', ini_get('disable_functions')))) {
+        $command = "ffprobe -v quiet -print_format json -show_format \"$filePath\" 2>/dev/null";
+        $output = '';
+        @exec($command, $output);
+        
+        if (!empty($output)) {
+            $jsonOutput = implode('', $output);
+            $metadata = json_decode($jsonOutput, true);
+            if (isset($metadata['format']['tags']['title'])) {
+                return trim($metadata['format']['tags']['title']);
+            }
+        }
+    }
+    
+    // Alternative: Try using proc_open() if other methods are disabled
+    if (function_exists('proc_open') && !in_array('proc_open', explode(',', ini_get('disable_functions')))) {
+        $descriptorspec = array(
+            0 => array("pipe", "r"),
+            1 => array("pipe", "w"),
+            2 => array("pipe", "w")
+        );
+        
+        $command = "ffprobe -v quiet -print_format json -show_format \"$filePath\" 2>/dev/null";
+        $process = @proc_open($command, $descriptorspec, $pipes);
+        
+        if (is_resource($process)) {
+            fclose($pipes[0]);
+            $output = stream_get_contents($pipes[1]);
+            fclose($pipes[1]);
+            fclose($pipes[2]);
+            proc_close($process);
+            
+            if ($output) {
+                $metadata = json_decode($output, true);
+                if (isset($metadata['format']['tags']['title'])) {
+                    return trim($metadata['format']['tags']['title']);
+                }
             }
         }
     }
