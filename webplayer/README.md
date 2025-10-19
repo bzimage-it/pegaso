@@ -21,6 +21,14 @@ A modern and intuitive audio player for playing AAC (and other formats) files or
 - 🎨 Multiple themes with customizable colors and styles
 - 🔧 Configurable settings per environment
 
+## 📱 Screenshots
+
+### Desktop Interface
+![Desktop Interface](docs/screenshot_desktop1.png)
+
+### Mobile Interface
+![Mobile Interface](docs/screenshot_mobile1.png)
+
 ## 🚀 How to Use
 
 ### 1. Setup
