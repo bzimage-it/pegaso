@@ -35,9 +35,9 @@ if ($argomentoId) {
     
     // Check if directory exists
     if (!is_dir($mediaDir)) {
-        $errorMessage = "ID non valido";
+        $errorMessage = "Invalid ID";
     } else if (!file_exists($infoFile)) {
-        $errorMessage = "info.json inesistente";
+        $errorMessage = "info.json missing";
     } else {
         // Load configuration
         $infoJson = file_get_contents($infoFile);
@@ -45,7 +45,7 @@ if ($argomentoId) {
         
         // Validate JSON
         if (json_last_error() !== JSON_ERROR_NONE) {
-            $errorMessage = "Errore nel file di configurazione";
+            $errorMessage = "Configuration file error";
         } else {
             // Get title and theme from info.json
             $pageTitle = $albumConfig['title'] ?? $argomentoId;
@@ -58,7 +58,7 @@ if ($argomentoId) {
     }
 } else {
     // No ID provided
-    $errorMessage = "ID non valido";
+    $errorMessage = "Invalid ID";
 }
 
 // If there's an error, show error page
@@ -68,11 +68,11 @@ if ($errorMessage) {
         <html lang="it">
         <head>
             <meta charset="UTF-8">
-            <title>Errore - Audio Player</title>
+            <title>Error - Audio Player</title>
         </head>
         <body>
-            <h1>Errore di Configurazione</h1>
-            <p>Non è stato possibile caricare l'ambiente audio richiesto.</p>
+            <h1>Configuration Error</h1>
+            <p>Unable to load the requested audio environment.</p>
             <p><strong><?php echo htmlspecialchars($errorMessage); ?></strong></p>
         </body>
         </html>
@@ -190,10 +190,8 @@ function loadAlbumsFromJson($targetDir, $albumConfig = []) {
         
         // Only add albums that contain audio files
         if (!empty($audioFiles)) {
-            // Sort files alphabetically by name
-            usort($audioFiles, function($a, $b) {
-                return strcasecmp($a['name'], $b['name']);
-            });
+            // Keep original file order instead of sorting alphabetically
+            // Files are already in the correct order from scandir()
             
             $directories[] = [
                 'name' => $albumData['title'],
@@ -266,15 +264,15 @@ $argomentoPath = $argomentoDir ? $argomentoDir : '';
                 <div class="mobile-album-selector">
                     <label for="album-dropdown">Album:</label>
                     <select id="album-dropdown" class="album-dropdown">
-                        <option value="">Seleziona un album...</option>
+                        <option value="">Select an album...</option>
                     </select>
                 </div>
 
                 <!-- File Browser -->
                 <aside class="file-browser">
-                    <h2>Cartelle e File</h2>
+                    <h2>Albums</h2>
                     <div id="directory-list" class="directory-list">
-                        <div class="loading">Caricamento...</div>
+                        <div class="loading">Loading...</div>
                     </div>
                 </aside>
 
@@ -283,7 +281,7 @@ $argomentoPath = $argomentoDir ? $argomentoDir : '';
                     <!-- Now Playing Info -->
                     <div class="now-playing">
                         <div class="track-info">
-                            <h3 id="track-title">Nessun brano selezionato</h3>
+                            <h3 id="track-title">No track selected</h3>
                             <p id="track-folder">-</p>
                         </div>
                     </div>
@@ -300,12 +298,12 @@ $argomentoPath = $argomentoDir ? $argomentoDir : '';
 
                     <!-- Controls -->
                     <div class="controls">
-                        <button id="prev-btn" class="control-btn" title="Precedente">
+                        <button id="prev-btn" class="control-btn" title="Previous">
                             <svg viewBox="0 0 24 24" width="24" height="24">
                                 <path fill="currentColor" d="M6 6h2v12H6zm3.5 6l8.5 6V6z"/>
                             </svg>
                         </button>
-                        <button id="skip-back-btn" class="control-btn control-btn-skip" title="Indietro">
+                        <button id="skip-back-btn" class="control-btn control-btn-skip" title="Skip Back">
                             <svg viewBox="0 0 24 24" width="24" height="24">
                                 <path fill="currentColor" d="M11 18V6l-8.5 6 8.5 6zm.5-6l8.5 6V6l-8.5 6z"/>
                             </svg>
@@ -318,7 +316,7 @@ $argomentoPath = $argomentoDir ? $argomentoDir : '';
                                 <path fill="white" d="M6 4h4v16H6zm8 0h4v16h-4z"/>
                             </svg>
                         </button>
-                        <button id="skip-forward-btn" class="control-btn control-btn-skip" title="Avanti">
+                        <button id="skip-forward-btn" class="control-btn control-btn-skip" title="Skip Forward">
                             <svg viewBox="0 0 24 24" width="24" height="24">
                                 <path fill="currentColor" d="M4 18l8.5-6L4 6v12zm9-12v12l8.5-6L13 6z"/>
                             </svg>
@@ -328,15 +326,15 @@ $argomentoPath = $argomentoDir ? $argomentoDir : '';
                                 <path fill="currentColor" d="M6 6h12v12H6z"/>
                             </svg>
                         </button>
-                        <button id="next-btn" class="control-btn" title="Successivo">
+                        <button id="next-btn" class="control-btn" title="Next">
                             <svg viewBox="0 0 24 24" width="24" height="24">
                                 <path fill="currentColor" d="M6 18l8.5-6L6 6v12zM16 6v12h2V6h-2z"/>
                             </svg>
                         </button>
-                        <button id="playback-mode-btn" class="control-btn" title="Modalità di riproduzione">
+                        <button id="playback-mode-btn" class="control-btn" title="Playback Mode">
                             <span id="mode-icon">⏭️</span>
                         </button>
-                        <button id="speed-btn" class="control-btn" title="Velocità di riproduzione">
+                        <button id="speed-btn" class="control-btn" title="Playback Speed">
                             <span id="speed-text">1x</span>
                         </button>
                     </div>
@@ -362,9 +360,9 @@ $argomentoPath = $argomentoDir ? $argomentoDir : '';
 
                     <!-- Playlist Queue -->
                     <div class="playlist-queue">
-                        <h3>Coda di riproduzione</h3>
+                        <h3>Playlist Queue</h3>
                         <div id="queue-list" class="queue-list">
-                            <p class="empty-queue">Nessun file nella coda</p>
+                            <p class="empty-queue">No files in queue</p>
                         </div>
                     </div>
                 </main>
@@ -372,10 +370,10 @@ $argomentoPath = $argomentoDir ? $argomentoDir : '';
                 <!-- Mobile Track Tabs -->
                 <div class="mobile-track-tabs">
                     <div class="track-tabs-header">
-                        <h3>Brani</h3>
+                        <h3>Tracks</h3>
                     </div>
                     <div id="track-tabs" class="track-tabs">
-                        <p class="no-tracks">Seleziona un album per vedere i brani</p>
+                        <p class="no-tracks">Select an album to see tracks</p>
                     </div>
                 </div>
             </div>

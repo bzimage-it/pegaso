@@ -170,7 +170,7 @@ The player will show:
 ### Syntax:
 
 ```bash
-./convert_audio.sh <source-dir> <target-dir> [--profile <name>] [--fix-whatsapp-aac] [permutation...]
+./convert_audio.sh <source-dir> <target-dir> [--profile <name>] [--fix-duration-seeking-aac] [permutation...]
 ```
 
 ### Examples:
@@ -204,11 +204,11 @@ Available profiles:
 ./convert_audio.sh media-orig/lesson1 media/course_biblical-liturgical_2025_2026/lesson01 2 3 1
 ```
 
-#### 4. Fix WhatsApp AAC Files
+#### 4. Fix AAC Duration/Seeking Issues
 
 ```bash
-# Fix WhatsApp AAC files for proper playback and seeking
-./convert_audio.sh media-orig/lesson1 media/course_biblical-liturgical_2025_2026/lesson01 --fix-whatsapp-aac
+# Fix AAC files with corrupted metadata for proper playback and seeking
+./convert_audio.sh media-orig/lesson1 media/course_biblical-liturgical_2025_2026/lesson01 --fix-duration-seeking-aac
 ```
 
 #### 5. From External Directory
@@ -266,8 +266,8 @@ mkdir -p media/new_course/lesson02
 # Lesson 2 with reordering
 ./convert_audio.sh media-orig/audio_lesson2 media/new_course/lesson02 --profile mobile 3 1 2
 
-# Lesson 3 with WhatsApp fix
-./convert_audio.sh media-orig/whatsapp_audio media/new_course/lesson03 --fix-whatsapp-aac
+# Lesson 3 with duration/seeking fix
+./convert_audio.sh media-orig/whatsapp_audio media/new_course/lesson03 --fix-duration-seeking-aac
 ```
 
 ### 3. Access the Player

@@ -19,7 +19,12 @@
     "Album1": {
       "title": "First Album",
       "description": "First Album",
-      "tracks": []
+      "tracks": [
+            {
+              "file": "2_part_2.m4a",
+              "title": "Overwritten title"
+            }
+      ]
     },
     "Album2": {
       "title": "Second Album",

@@ -61,9 +61,9 @@ class AudioPlayer {
         // Playback modes from configuration
         const availableModes = this.features.playbackModes || ['single', 'sequential', 'repeat'];
         this.playbackModes = [
-            { id: 'single', name: 'Una Traccia', icon: '⏹️' },
-            { id: 'sequential', name: 'Sequenziale', icon: '⏭️' },
-            { id: 'repeat', name: 'Ripeti', icon: '🔄' }
+            { id: 'single', name: 'Single Track', icon: '⏹️' },
+            { id: 'sequential', name: 'Sequential', icon: '⏭️' },
+            { id: 'repeat', name: 'Repeat', icon: '🔄' }
         ].filter(mode => availableModes.includes(mode.id));
         
         // Find default mode index
@@ -225,7 +225,7 @@ class AudioPlayer {
         }
         
         // Clear existing options except the first one
-        this.albumDropdown.innerHTML = '<option value="">Seleziona un album...</option>';
+        this.albumDropdown.innerHTML = '<option value="">Select an album...</option>';
         
         directories.forEach(dir => {
             const option = document.createElement('option');
@@ -256,7 +256,7 @@ class AudioPlayer {
         this.trackTabs.innerHTML = '';
         
         if (!files || files.length === 0) {
-            this.trackTabs.innerHTML = '<p class="no-tracks">Nessuna traccia disponibile</p>';
+            this.trackTabs.innerHTML = '<p class="no-tracks">No tracks available</p>';
             return;
         }
         
@@ -764,9 +764,9 @@ class AudioPlayer {
             
             if (!directories || directories.length === 0) {
                 console.log('No directories found - showing empty message');
-                this.directoryList.innerHTML = '<div class="loading">Nessun album con tracce audio trovato</div>';
+                this.directoryList.innerHTML = '<div class="loading">No albums with audio tracks found</div>';
                 if (this.isMobile) {
-                    this.trackTabs.innerHTML = '<p class="no-tracks">Nessun album con tracce audio trovato</p>';
+                    this.trackTabs.innerHTML = '<p class="no-tracks">No albums with audio tracks found</p>';
                 }
                 return;
             }
@@ -805,9 +805,9 @@ class AudioPlayer {
             }
         } catch (error) {
             console.error('Error loading directories:', error);
-            this.directoryList.innerHTML = '<div class="loading">Errore nel caricamento delle cartelle</div>';
+            this.directoryList.innerHTML = '<div class="loading">Error loading folders</div>';
             if (this.isMobile) {
-                this.trackTabs.innerHTML = '<p class="no-tracks">Errore nel caricamento delle cartelle</p>';
+                this.trackTabs.innerHTML = '<p class="no-tracks">Error loading folders</p>';
             }
         }
     }
@@ -819,7 +819,7 @@ class AudioPlayer {
         }
         
         if (!directories || directories.length === 0) {
-            this.directoryList.innerHTML = '<div class="loading">Nessuna cartella trovata</div>';
+            this.directoryList.innerHTML = '<div class="loading">No folders found</div>';
             return;
         }
 
@@ -843,7 +843,7 @@ class AudioPlayer {
                 const wasExpanded = folderItem.classList.contains('expanded');
                 folderItem.classList.toggle('expanded');
                 
-                // Se la cartella viene espansa, carica la playlist senza far partire la riproduzione
+                // If the folder is expanded, load the playlist without starting playback
                 if (!wasExpanded) {
                     this.loadFolder(dir.name, dir.files, dir.key);
                 }
@@ -852,15 +852,10 @@ class AudioPlayer {
             const folderFiles = document.createElement('div');
             folderFiles.className = 'folder-files';
             
-            // Sort files alphabetically by name
-            const sortedFiles = dir.files.sort((a, b) => {
-                if (typeof a === 'object' && typeof b === 'object') {
-                    return a.name.localeCompare(b.name);
-                }
-                return a.localeCompare(b);
-            });
+            // Keep original file order instead of sorting alphabetically
+            // Files are already in the correct order from the server
             
-            sortedFiles.forEach((file, sortedIndex) => {
+            dir.files.forEach((file, sortedIndex) => {
                 const fileName = typeof file === 'string' ? file : file.name;
                 const fileData = typeof file === 'string' ? file : file.file;
                 
@@ -902,7 +897,7 @@ class AudioPlayer {
     }
 
     loadFolder(folderName, files, folderKey = null) {
-        // Se cambia cartella, reset completo
+        // If folder changes, complete reset
         const folderChanged = this.currentFolder !== folderName;
         
         this.currentFolder = folderName;
@@ -931,13 +926,13 @@ class AudioPlayer {
             }
         });
         
-        // Sort alphabetically by name
-        this.playlist.sort((a, b) => a.name.localeCompare(b.name));
+        // Keep original file order instead of sorting alphabetically
+        // Files are already in the correct order from the server
         
-        // Reset currentIndex quando si carica una nuova cartella
+        // Reset currentIndex when loading a new folder
         if (folderChanged) {
             this.currentIndex = -1;
-            // Ferma l'audio se sta suonando
+            // Stop audio if playing
             if (this.isPlaying) {
                 this.audio.pause();
                 this.isPlaying = false;
@@ -978,19 +973,19 @@ class AudioPlayer {
     }
     
     updateFileSelection() {
-        // Aggiorna la selezione nell'albero dei file
+        // Update selection in file tree
         if (this.currentIndex < 0 || this.currentIndex >= this.playlist.length) {
             return;
         }
         
         const currentTrack = this.playlist[this.currentIndex];
         
-        // Rimuovi tutte le classi active
+        // Remove all active classes
         document.querySelectorAll('.file-item').forEach(item => {
             item.classList.remove('active');
         });
         
-        // Trova e attiva il file corrente usando gli attributi data
+        // Find and activate current file using data attributes
         document.querySelectorAll('.file-item').forEach(item => {
             const itemFolder = item.dataset.folder;
             const itemFile = item.dataset.file;
@@ -998,7 +993,7 @@ class AudioPlayer {
             if (itemFolder === currentTrack.folder && itemFile === currentTrack.name) {
                 item.classList.add('active');
                 
-                // Assicurati che la cartella sia espansa
+                // Make sure the folder is expanded
                 const folderItem = item.closest('.folder-item');
                 if (folderItem && !folderItem.classList.contains('expanded')) {
                     folderItem.classList.add('expanded');
@@ -1016,7 +1011,7 @@ class AudioPlayer {
         }
         
         if (this.playlist.length === 0) {
-            alert('Seleziona una traccia audio da riprodurre');
+            alert('Select an audio track to play');
             return;
         }
         
@@ -1095,11 +1090,11 @@ class AudioPlayer {
         this.modeIcon.textContent = currentMode.icon;
         
         // Update tooltip
-        this.playbackModeBtn.title = `Modalità: ${currentMode.name}`;
+        this.playbackModeBtn.title = `Mode: ${currentMode.name}`;
     }
     
     togglePlaybackSpeed() {
-        // Cicla tra le velocità
+        // Cycle through speeds
         this.currentSpeedIndex = (this.currentSpeedIndex + 1) % this.playbackSpeeds.length;
         this.updatePlaybackSpeedDisplay();
         this.applyPlaybackSpeed();
@@ -1110,7 +1105,7 @@ class AudioPlayer {
         this.speedText.textContent = `${currentSpeed}x`;
         
         // Update tooltip
-        this.speedBtn.title = `Velocità: ${currentSpeed}x`;
+        this.speedBtn.title = `Speed: ${currentSpeed}x`;
     }
     
     applyPlaybackSpeed() {
@@ -1183,11 +1178,11 @@ class AudioPlayer {
             this.trackTitle.textContent = track.name;
             this.trackFolder.textContent = `Album: ${track.folder}`;
         } else if (this.currentFolder && this.playlist.length > 0) {
-            // Album caricato ma nessuna traccia in riproduzione
-            this.trackTitle.textContent = `${this.currentFolder} (${this.playlist.length} traccia${this.playlist.length !== 1 ? 'e' : ''})`;
-            this.trackFolder.textContent = 'Premi play per iniziare';
+            // Album loaded but no track playing
+            this.trackTitle.textContent = `${this.currentFolder} (${this.playlist.length} track${this.playlist.length !== 1 ? 's' : ''})`;
+            this.trackFolder.textContent = 'Press play to start';
         } else {
-            this.trackTitle.textContent = 'Nessuna traccia selezionata';
+            this.trackTitle.textContent = 'No track selected';
             this.trackFolder.textContent = '-';
         }
     }
@@ -1287,7 +1282,7 @@ class AudioPlayer {
 
     updateQueue() {
         if (this.playlist.length === 0) {
-            this.queueList.innerHTML = '<p class="empty-queue">Nessuna traccia nella coda</p>';
+            this.queueList.innerHTML = '<p class="empty-queue">No tracks in queue</p>';
             return;
         }
         
