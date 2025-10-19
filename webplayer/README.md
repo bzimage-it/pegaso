@@ -20,6 +20,8 @@ A modern and intuitive audio player for playing AAC (and other formats) files or
 - ⚡ Speed control (0.75x, 1x, 1.5x, 2x)
 - 🎨 Multiple themes with customizable colors and styles
 - 🔧 Configurable settings per environment
+- 🛡️ **Secure audio streaming** with protected file access
+- ⚡ **Advanced seeking** with HTTP Range Request support
 
 ## 📱 Screenshots
 
@@ -28,6 +30,31 @@ A modern and intuitive audio player for playing AAC (and other formats) files or
 
 ### Mobile Interface
 ![Mobile Interface](docs/screenshot_mobile1.png)
+
+## 🛡️ Security Features
+
+### Protected Audio Streaming
+
+The player implements a secure audio streaming system that prevents direct access to audio files while maintaining full functionality:
+
+- **🔒 Direct Access Blocked**: Audio files cannot be accessed directly via URL
+- **🛡️ Proxy Server**: All audio requests go through `serve_audio.php`
+- **✅ Validated Access**: File existence and type validation on every request
+- **⚡ Range Requests**: HTTP 206 Partial Content support for efficient seeking
+- **📁 Directory Protection**: `.htaccess` prevents directory browsing
+
+### How `serve_audio.php` Works
+
+The `serve_audio.php` script acts as a secure proxy for audio files:
+
+1. **Request Processing**: Receives file requests via query parameter
+2. **Security Validation**: Prevents directory traversal attacks
+3. **File Verification**: Checks file existence and audio format
+4. **MIME Type Detection**: Serves correct Content-Type headers
+5. **Range Request Support**: Handles HTTP Range headers for seeking
+6. **Streaming**: Efficiently streams audio data in 8KB chunks
+
+**Example URL**: `serve_audio.php?file=FORM-BIBLIT-25-26/2025-10-03/1_part_1.m4a`
 
 ## 🚀 How to Use
 
@@ -40,6 +67,8 @@ yoursite.com/player/
 ├── index.php         ← Main file (contains everything)
 ├── style.css         ← Styles
 ├── script.js         ← JavaScript logic
+├── serve_audio.php   ← Secure audio streaming proxy
+├── .htaccess         ← Security rules and URL rewriting
 ├── conf.json         ← Global configuration
 ├── README.md
 └── media/            ← Audio files folder

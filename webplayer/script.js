@@ -918,9 +918,10 @@ class AudioPlayer {
         const folderChanged = this.currentFolder !== folderName;
         
         this.currentFolder = folderName;
-        const basePath = window.ARGOMENTO_PATH ? `media/${window.ARGOMENTO_PATH}` : 'media';
         
         // Use folderKey if provided, otherwise use folderName
+        // For FORM-BIBLIT-25-26, we need to include the full path
+        const baseDir = window.ARGOMENTO_PATH || 'FORM-BIBLIT-25-26';
         const actualFolderName = folderKey || folderName;
         
         // Handle both old format (strings) and new format (objects)
@@ -930,7 +931,7 @@ class AudioPlayer {
                 return {
                     name: file,
                     folder: folderName,
-                    url: `${basePath}/${encodeURIComponent(actualFolderName)}/${encodeURIComponent(file)}`
+                    url: `serve_audio.php?file=${encodeURIComponent(baseDir)}/${encodeURIComponent(actualFolderName)}/${encodeURIComponent(file)}`
                 };
             } else {
                 // New format: object with name, file
@@ -938,7 +939,7 @@ class AudioPlayer {
                     name: file.name,
                     file: file.file,
                     folder: folderName,
-                    url: `${basePath}/${encodeURIComponent(actualFolderName)}/${encodeURIComponent(file.file)}`
+                    url: `serve_audio.php?file=${encodeURIComponent(baseDir)}/${encodeURIComponent(actualFolderName)}/${encodeURIComponent(file.file)}`
                 };
             }
         });
@@ -971,6 +972,8 @@ class AudioPlayer {
         this.currentIndex = index;
         const track = this.playlist[index];
         
+        console.log('Playing track:', track.name, 'URL:', track.url);
+        console.log('Track object:', track);
         this.audio.src = track.url;
         this.audio.load();
         this.applyPlaybackSpeed(); // Apply current speed
