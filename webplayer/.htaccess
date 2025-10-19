@@ -1,0 +1,23 @@
+# Disable directory browsing
+Options -Indexes
+
+# Deny access to .htaccess files
+<Files ".htaccess">
+    Order allow,deny
+    Deny from all
+</Files>
+
+# Deny access to info.json files (optional - remove if you want them accessible)
+<Files "info.json">
+    Order allow,deny
+    Deny from all
+</Files>
+
+# Enable range requests for audio files
+<IfModule mod_headers.c>
+    <FilesMatch "\.(aac|m4a|mp3|wav|ogg|flac|mp4)$">
+        Header set Accept-Ranges bytes
+        Header set Cache-Control "public, max-age=3600"
+    </FilesMatch>
+</IfModule>
+
