@@ -1,6 +1,9 @@
 # Disable directory browsing
 Options -Indexes
 
+# Custom error page for directory access
+ErrorDocument 403 "<html><body><h1>Access Denied</h1><p>Directory browsing is not allowed. Please use the web player interface.</p></body></html>"
+
 # Deny access to .htaccess files
 <Files ".htaccess">
     Order allow,deny
@@ -13,11 +16,8 @@ Options -Indexes
     Deny from all
 </Files>
 
-# Enable range requests for audio files
-<IfModule mod_headers.c>
-    <FilesMatch "\.(aac|m4a|mp3|wav|ogg|flac|mp4)$">
-        Header set Accept-Ranges bytes
-        Header set Cache-Control "public, max-age=3600"
-    </FilesMatch>
-</IfModule>
+# Redirect audio file requests to serve_audio.php
+RewriteEngine On
+RewriteRule ^media/.*\.(aac|m4a|mp3|wav|ogg|flac|mp4)$ serve_audio.php [L,QSA]
+
 
