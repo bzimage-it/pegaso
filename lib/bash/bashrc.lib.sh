@@ -15,6 +15,125 @@ new_chr="_"
 now_FORMAT="%Y-%m-%d-%H%M"
 now_FORMAT_s="%Y-%m-%d-%H%M%S"
 t_PEGASO_CONF_DIR=$HOME/.pegaso
+pwd_SUBST="__"
+pwd_cmd="$(which pwd)"
+
+
+
+function _extract_by_slash() {
+    local input_string="$1"
+    local n="$2"
+    
+    if (( n == 0 )); then
+        # N è zero, ritorna la stringa intera
+        echo "$input_string"
+        return
+    elif (( n > 0 )); then
+	# count from left to right
+        echo "$input_string" | cut -d'/' -f$((n + 1))-
+    else
+	# count from right to left
+        local occurrences=$(( -n ))
+        echo "$input_string" | rev | cut -d'/' -f$((occurrences + 1))- | rev
+    fi
+}
+
+
+
+function _parse_command_for_pwd() {
+    # dovrebber parserizzare meglio pwd
+    # fatto con chatgpt
+    #
+    local subst_string=""
+    local n_value=""
+    local option_s=false
+    local option_r=false
+
+    while [[ $# -gt 0 ]]; do
+        case "$1" in
+            -s)
+                option_s=true
+                # Se c'è un secondo argomento e non è un'opzione, trattalo come subst-string
+                if [[ -n "$2" && "$2" != -* ]]; then
+                    subst_string="$2"
+                    shift # Avanza per saltare anche subst-string
+                fi
+                ;;
+            -r)
+                option_r=true
+                # Controlla se c'è un numero intero (con o senza segno) come argomento per -r
+                if [[ -n "$2" && "$2" =~ ^-?[0-9]+$ ]]; then
+                    n_value="$2"
+                    shift # Avanza per saltare il numero
+                else
+                    echo "Errore: -r richiede un numero intero come argomento" >&2
+                    return 1
+                fi
+                ;;
+            *)
+                echo "Errore: opzione non riconosciuta $1" >&2
+                return 1
+                ;;
+        esac
+        shift
+    done
+
+    # Mostra i valori delle variabili parsate (per debug)
+    echo "Substitute string: ${subst_string:-Nessuna}"
+    echo "N value: ${n_value:-Nessuno}"
+    echo "Option -s set: $option_s"
+    echo "Option -r set: $option_r"
+}
+
+
+# pwd extention:
+function pwd() {
+	local subst="$pwd_SUBST"
+	local v=
+	local n=
+	local opt_x=0
+	local opt_s=
+	local opt_r=
+	local opt_s_v="$pwd_SUBST"
+	local opt_r_v=
+	if [[ $1 == '-h' || $1 == '--help' ]]; then
+		cat<<EOF
+PEGASO pwd(1) extention:
+	pwd [-s [subst-string [-r <N>|-<N>]]]
+        pwd [-h | --help]
+        pwd ....
+
+        execute pwd(1) command; with -s substitute '/' with subst-string (default is $pwd_SUBST)
+
+current pwd_SUBST=$pwd_SUBST
+
+EOF
+	fi
+	
+	if [[ $1 == '-s' ]]; then
+		if [[ -n $2 ]]; then
+			subst="$2"
+			shift
+		fi
+		v="$($pwd_cmd)"
+		if [[ $2 == '-r' ]]; then
+			if [[ $3 =~  ^-?[0-9]+$ ]]; then 
+				n="$3"
+				shift
+				v="$(_extract_by_slash "$v" $n)"
+			else
+				echo "error -r argument shall be a signed integer number" >&2 
+				return 1
+			fi
+		else
+			v="$($pwd_cmd)"
+		fi
+		echo "${v//\//$subst}"
+		
+	else
+		$pwd_cmd $*
+	fi
+}
 
 
 function win2posix() {
@@ -78,7 +197,7 @@ you are using che 'PEGASO' version of 'cd', a wrapper of the build-in cd that im
   cd -NLEVEL
   cd %[NFIFO]
   cd <built-in-options>
-  cd ?
+  cd ? | :?
 
   NLEVEL number of up level (..) to change go.
   NFIFO  number of line in saved cache to change to. use "cd %" to show the cache.
@@ -93,8 +212,9 @@ example:
      change directory to the 18th cached directory.
   cd <build-in params...> 
      execute build-in bash; if fails, do "fast" cd, see above.
-  cd ?
-     show available directories for "fast" cd.
+  cd ? | :?
+     show available directories for "fast" cd. sometime '?' do now work due
+     to shell substitution, so alias ':?' can be used too.
 
 if option above are not recognized, the build-in bash cd command is called
 passing all left parameter. You can use 'buildin cd' command to force use
@@ -115,9 +235,9 @@ EOF
 	builtin cd -h
 	return 0
     fi
-    if [[ $d == '?' ]]; then
+    if [[ $d == '?' || $d == ':?' ]]; then
 	ls $t_PEGASO_CONF_DIR/cd
-	return 0
+	return $?
     fi
     if [[ $d =~ %(([0-9]*)?) ]]; then             
 	    if [[ -z ${d:1} ]]; then	    
