@@ -223,6 +223,24 @@ function do_cat {
 	pdftk "$FILE" cat "$spec" output "$t" && echo "output file: $t"
 }
 
+
+function do_flat {
+	local FILE="$1"
+	local DIR=$(mktemp -d)
+	b="${FILE%.*}"
+	t="$b.flat.pdf"
+	fullfile="$(readlink -f "$FILE")"
+	cd "$DIR" 
+	test $? != 0 && echo "error cannot change dir: $DIR" && return 3
+	pwd
+	pdftoppm "$fullfile" flatpage
+	ls -1
+	echo "convert... "
+	convert flatpage*.ppm $t
+	ORIGDIR="$(dirname "$fullfile")"
+	mv -v "$t" "$ORIGDIR"
+}
+
 if [[ -z $FILE ]]; then
     syntax
     exit 1
@@ -248,6 +266,11 @@ case "$CMD" in
     	shift
 	shift
     	do_cat "$FILE" $*
+    	;;
+    flat)
+    	shift
+    	shift
+    	do_flat "$FILE" $*
     	;;
     *)
 	echo "unknown command: $CMD"
