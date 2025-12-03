@@ -655,3 +655,7 @@ EOF
     ret=$?
     return $ret
 }
+
+
+alias rslash='pegaso-rslash'
+

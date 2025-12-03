@@ -18,7 +18,8 @@ PEGASO_SCRIPT_FILE=$(basename "$PEGASO_SOURCE")
 
 cd "$PEGASO_SCRIPT_DIR"
 export PEGASO_ROOT="$(pwd)"
-cd bin && chmod -v 755 *
+(cd bin && chmod -v 755 *)
 
-
+echo -n compiling rslash ...
+gcc -O3 -o bin/pegaso-rslash src/rslash.c && echo installed
 
