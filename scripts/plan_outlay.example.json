@@ -1,0 +1,99 @@
+{
+    "saldo_iniziale" : "1105,37" ,
+    "data_inizio" : "2025-10-20", 
+    "durata_anni" : 4,
+    "plan" : [
+        {
+            "data": "2025-09-11",
+            "descrizione": "+",
+            "importo": "120,00",
+            "tipo": "mensile",
+            "skip": true
+        },
+        {
+            "data": "2025-10-26",
+            "descrizione": "+",
+            "importo": "50,00",
+            "tipo": "settimanale"
+        },
+        {
+            "data": "2026-09-11",
+            "descrizione": "+",
+            "importo": "150,00",
+            "tipo": "mensile",
+            "skip": true
+        },
+        {
+            "data" : "2026-09-01" , 
+            "descrizione" : "SPORT RAGAZZI", 
+            "importo" : "-700,00", 
+            "tipo" : "annuale" 
+        },
+        {
+            "data" : "2024-01-09" , 
+            "descrizione" : "Revisione Auto 1", 
+            "importo" : "-90,00", 
+            "frequenza" : 2,
+            "tipo" : "annuale" 
+        },
+        {
+            "data" : "2025-02-26" , 
+            "descrizione" : "Revisione Auto 2", 
+            "importo" : "-90,00", 
+            "frequenza" : 2,
+            "tipo" : "annuale" 
+        },
+        { 
+            "data" : "2025-09-30" , 
+            "descrizione" : "Bollo Auto 2", 
+            "importo" : "-139,60", 
+            "tipo" : "annuale" 
+        }, {
+            "data" : "2025-11-01" , 
+            "descrizione" : "Assicurazione Auto 1", 
+            "importo" : "-348,00", 
+            "tipo" : "annuale" 
+        }, {
+            "data" : "2025-12-31" , 
+            "descrizione" : "TARI 3 RATA", 
+            "importo" : "-149,00", 
+            "tipo" : "annuale" 
+        },{
+            "data" : "2026-03-06" , 
+            "descrizione" : "Assicurazione Auto 2", 
+            "importo" : "-563,00", 
+            "tipo" : "annuale" 
+        },{
+            "data" : "2026-04-01" , 
+            "descrizione" : "Bollo Auto 1", 
+            "importo" : "-116,00", 
+            "tipo" : "annuale" 
+        },{
+            "data" : "2026-06-30" , 
+            "descrizione" : "TARI 1 RATA", 
+            "importo" : "-149,00", 
+            "tipo" : "annuale" 
+        },{
+            "data" : "2026-08-30" , 
+            "descrizione" : "TARI 2 RATA", 
+            "importo" : "-140,00", 
+            "tipo" : "annuale" 
+        },{
+            "data" : "2026-09-30" , 
+            "descrizione" : "Bollo Auto 2", 
+            "importo" : "-139,60", 
+            "tipo" : "annuale" 
+        },{
+            "data" : "2026-10-30" , 
+            "descrizione" : "Assicurazione Auto 1", 
+            "importo" : "-298,00", 
+            "tipo" : "annuale" 
+        },{
+            "data" : "2026-12-31" , 
+            "descrizione" : "TARI 3 RATA", 
+            "importo" : "-149,00", 
+            "tipo" : "annuale" 
+        }
+    ]
+
+}
