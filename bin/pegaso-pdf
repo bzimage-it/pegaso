@@ -22,9 +22,24 @@ FILE="$2"
 function syntax() {
 	cat <<EOF
 sintax: 
-  ${PEGASO_SCRIPT_FILE} removepwd|shrink|grayscale <filename>
+  ${PEGASO_SCRIPT_FILE} removepwd|shrink|grayscale|flat|stripmetadata <filename> [options]
   ${PEGASO_SCRIPT_FILE} cat <filename> <page-specs>
   ${PEGASO_SCRIPT_FILE} merge <output-file> [ <input-file1> ... ]
+  ${PEGASO_SCRIPT_FILE} replace <main-file> <replacement-file> <page-list> [output-file]
+
+replace command:
+  Replaces specific pages from main PDF with pages from replacement PDF.
+  Both files must have the same number of pages.
+  
+  page-list format:
+    - Single pages: "1,3,5" (replaces pages 1, 3, and 5)
+    - Page ranges: "1-3" (replaces pages 1, 2, and 3)
+    - Combinations: "1-3,5,7-9" (replaces pages 1-3, 5, and 7-9)
+  
+  Examples:
+    ${PEGASO_SCRIPT_FILE} replace main.pdf replacement.pdf "19"
+    ${PEGASO_SCRIPT_FILE} replace main.pdf replacement.pdf "1,3,5" output.pdf
+    ${PEGASO_SCRIPT_FILE} replace main.pdf replacement.pdf "1-5,10" output.pdf
 EOF
 	
 }
@@ -232,13 +247,182 @@ function do_flat {
 	fullfile="$(readlink -f "$FILE")"
 	cd "$DIR" 
 	test $? != 0 && echo "error cannot change dir: $DIR" && return 3
-	pwd
+	
+	# Get page dimensions from original file to preserve them
+	local PAGE_DIMENSIONS=""
+	local FIRST_PAGE_INFO=$(pdftk "$fullfile" dump_data 2>/dev/null | grep "PageMediaDimensions" | head -1)
+	if [[ "$FIRST_PAGE_INFO" =~ PageMediaDimensions:[[:space:]]*([0-9.]+)[[:space:]]+([0-9.]+) ]]; then
+		local PAGE_WIDTH="${BASH_REMATCH[1]}"
+		local PAGE_HEIGHT="${BASH_REMATCH[2]}"
+		PAGE_DIMENSIONS="${PAGE_WIDTH}x${PAGE_HEIGHT}"
+		echo "preserving page dimensions: ${PAGE_DIMENSIONS} points"
+	fi
+	
 	pdftoppm "$fullfile" flatpage
 	ls -1
 	echo "convert... "
-	convert flatpage*.ppm $t
+	
+	# Convert images to PDF, preserving original page dimensions if available
+	if [[ -n "$PAGE_DIMENSIONS" ]]; then
+		# Use -page to set page dimensions in points
+		convert flatpage*.ppm -page "$PAGE_DIMENSIONS" $t
+	else
+		# Fallback: convert without specifying dimensions
+		convert flatpage*.ppm $t
+	fi
+	
 	ORIGDIR="$(dirname "$fullfile")"
 	mv -v "$t" "$ORIGDIR"
+}
+
+function do_merge {
+	local FILE="$1"
+	shift
+	pdftk $* cat output "$FILE" && echo "output file: $FILE"
+}
+
+
+function do_strip {
+	local FILE="$1"
+	exiftool -r -all:all= "$FILE"
+	exiftool -r -all "$FILE"
+}
+
+# Replace specific pages from main PDF with pages from replacement PDF
+# Usage: do_replace <main-file> <replacement-file> <page-list> [output-file]
+# page-list format: comma-separated page numbers (e.g., "1,3,5" or "1-3,5")
+# output-file: optional, if not provided, defaults to <main-file>_replaced.pdf
+function do_replace {
+	local MAIN_FILE="$1"
+	local REPLACEMENT_FILE="$2"
+	local PAGE_LIST="$3"
+	local OUTPUT_FILE="$4"
+	
+	# Validate required arguments
+	if [[ -z "$MAIN_FILE" ]] || [[ -z "$REPLACEMENT_FILE" ]] || [[ -z "$PAGE_LIST" ]]; then
+		echo "error: replace command requires at least 3 arguments: <main-file> <replacement-file> <page-list> [output-file]"
+		echo "       example: ${PEGASO_SCRIPT_FILE} replace main.pdf replacement.pdf \"1,3,5\" [output.pdf]"
+		exit 1
+	fi
+	
+	# Check if pdftk is available
+	which pdftk > /dev/null
+	if [[ $? != 0 ]]; then
+		echo "error: 'pdftk' command not found, install it first"
+		exit 2
+	fi
+	
+	# Check if files exist
+	if [[ ! -f "$MAIN_FILE" ]]; then
+		echo "error: main file not found: $MAIN_FILE"
+		exit 1
+	fi
+	
+	if [[ ! -f "$REPLACEMENT_FILE" ]]; then
+		echo "error: replacement file not found: $REPLACEMENT_FILE"
+		exit 1
+	fi
+	
+	# Get number of pages in both files
+	local MAIN_PAGES=$(pdftk "$MAIN_FILE" dump_data | grep NumberOfPages | awk '{print $2}')
+	local REPLACEMENT_PAGES=$(pdftk "$REPLACEMENT_FILE" dump_data | grep NumberOfPages | awk '{print $2}')
+	
+	if [[ -z "$MAIN_PAGES" ]] || [[ -z "$REPLACEMENT_PAGES" ]]; then
+		echo "error: could not determine number of pages in PDF files"
+		exit 1
+	fi
+	
+	# Check if replacement file has same number of pages as main file
+	if [[ "$REPLACEMENT_PAGES" != "$MAIN_PAGES" ]]; then
+		echo "error: replacement file has $REPLACEMENT_PAGES pages, but main file has $MAIN_PAGES pages"
+		echo "       both files must have the same number of pages"
+		exit 1
+	fi
+	
+	# Parse page list and validate page numbers
+	# Convert page list to array of page numbers
+	local PAGES_TO_REPLACE=()
+	local IFS=','
+	for page_spec in $PAGE_LIST; do
+		# Remove whitespace
+		page_spec=$(echo "$page_spec" | tr -d '[:space:]')
+		
+		# Check if it's a range (e.g., "1-3")
+		if [[ "$page_spec" =~ ^([0-9]+)-([0-9]+)$ ]]; then
+			local start_page="${BASH_REMATCH[1]}"
+			local end_page="${BASH_REMATCH[2]}"
+			
+			# Validate range
+			if [[ "$start_page" -gt "$end_page" ]]; then
+				echo "error: invalid page range: $page_spec (start > end)"
+				exit 1
+			fi
+			
+			if [[ "$start_page" -lt 1 ]] || [[ "$end_page" -gt "$MAIN_PAGES" ]]; then
+				echo "error: page range $page_spec is out of bounds (1-$MAIN_PAGES)"
+				exit 1
+			fi
+			
+			# Add all pages in range
+			for ((p=start_page; p<=end_page; p++)); do
+				PAGES_TO_REPLACE+=("$p")
+			done
+		elif [[ "$page_spec" =~ ^[0-9]+$ ]]; then
+			# Single page number
+			if [[ "$page_spec" -lt 1 ]] || [[ "$page_spec" -gt "$MAIN_PAGES" ]]; then
+				echo "error: page number $page_spec is out of bounds (1-$MAIN_PAGES)"
+				exit 1
+			fi
+			PAGES_TO_REPLACE+=("$page_spec")
+		else
+			echo "error: invalid page specification: $page_spec"
+			exit 1
+		fi
+	done
+	
+	# Generate output filename if not provided
+	if [[ -z "$OUTPUT_FILE" ]]; then
+		local MAIN_BASE="${MAIN_FILE%.*}"
+		OUTPUT_FILE="${MAIN_BASE}_replaced.pdf"
+	fi
+	
+	echo "processing: replacing pages ${PAGES_TO_REPLACE[*]} from $MAIN_FILE"
+	echo "           using pages from $REPLACEMENT_FILE"
+	
+	# Build the page sequence for pdftk
+	# We'll create an array of page sources: either from main or replacement file
+	local PAGE_SEQUENCE=()
+	
+	for ((page=1; page<=MAIN_PAGES; page++)); do
+		local should_replace=0
+		for replace_page in "${PAGES_TO_REPLACE[@]}"; do
+			if [[ "$page" == "$replace_page" ]]; then
+				should_replace=1
+				break
+			fi
+		done
+		
+		if [[ $should_replace -eq 1 ]]; then
+			# Use page from replacement file (A=input1)
+			PAGE_SEQUENCE+=("A${page}")
+		else
+			# Use page from main file (B=input2)
+			PAGE_SEQUENCE+=("B${page}")
+		fi
+	done
+	
+	# Use simple pdftk combination without normalization
+	# This preserves the original content and dimensions of all pages
+	# Note: pages may have different sizes, but content will be preserved correctly
+	pdftk A="$REPLACEMENT_FILE" B="$MAIN_FILE" cat "${PAGE_SEQUENCE[@]}" output "$OUTPUT_FILE"
+	
+	if [[ $? != 0 ]]; then
+		echo "error: failed to combine pages"
+		exit 1
+	fi
+	
+	echo "output file: $OUTPUT_FILE"
+	echo "note: page sizes are preserved from original files - pages may have different dimensions"
 }
 
 if [[ -z $FILE ]]; then
@@ -271,6 +455,21 @@ case "$CMD" in
     	shift
     	shift
     	do_flat "$FILE" $*
+    	;;
+    stripmetadata)
+    	shift
+    	shift
+	do_strip "$FILE" $*
+	;;
+    merge)
+    	shift
+    	shift
+    	do_merge "$FILE" $*
+    	;;
+    replace)
+    	shift
+    	shift
+    	do_replace "$FILE" $*
     	;;
     *)
 	echo "unknown command: $CMD"
