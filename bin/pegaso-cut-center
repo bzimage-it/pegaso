@@ -1,0 +1,348 @@
+#!/usr/bin/env python3
+
+import sys
+import os
+import time
+import argparse
+
+
+# Default values
+DEFAULT_N = "term"
+DEFAULT_C = "[....]"
+DEFAULT_S = 1
+DEFAULT_F = None
+DEFAULT_T = "i"
+FALLBACK_WIDTH = 80
+
+# Supported output line terminators
+LINE_ENDINGS = {
+    "i": None,       # Preserve input terminators
+    "rn": "\r\n",    # Windows
+    "nr": "\n\r",    # LF followed by CR
+    "r": "\r",       # Classic Mac
+    "n": "\n",       # Unix/Linux
+}
+
+
+def parse_length(value):
+    """Parse the maximum line length or the special value 'term'."""
+    if value == "term":
+        return value
+
+    try:
+        number = int(value)
+        if number < 0:
+            raise ValueError
+        return number
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            "must be a non-negative integer or 'term'"
+        )
+
+
+def positive_int(value):
+    """Parse a strictly positive integer."""
+    try:
+        number = int(value)
+        if number < 1:
+            raise ValueError
+        return number
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            "must be an integer >= 1"
+        )
+
+
+def positive_float(value):
+    """Parse a strictly positive floating-point number."""
+    try:
+        number = float(value)
+        if not (0 < number < float("inf")):
+            raise ValueError
+        return number
+    except ValueError:
+        raise argparse.ArgumentTypeError(
+            "must be a finite number greater than zero"
+        )
+
+
+def get_terminal_width():
+    """Return the terminal width or use the fallback value."""
+    try:
+        width = os.get_terminal_size(sys.stdout.fileno()).columns
+        if width > 0:
+            return width
+    except (OSError, ValueError, AttributeError):
+        pass
+
+    print(
+        f"Warning: terminal width unavailable; "
+        f"using {FALLBACK_WIDTH}.",
+        file=sys.stderr,
+    )
+    return FALLBACK_WIDTH
+
+
+def truncate(line, max_length, replacement):
+    """Replace the middle of a line if it exceeds max_length."""
+    if len(line) <= max_length:
+        return line
+
+    remaining = max_length - len(replacement)
+
+    if remaining <= 0:
+        return replacement[:max_length]
+
+    left_length = (remaining + 1) // 2
+    right_length = remaining // 2
+
+    left = line[:left_length]
+    right = line[-right_length:] if right_length else ""
+
+    return left + replacement + right
+
+
+def iter_lines(stream):
+    """
+    Yield complete lines while preserving their original terminators.
+
+    Recognize CRLF, LFCR, CR, and LF.
+    """
+    buffer = ""
+    pending = ""
+
+    while True:
+        if pending:
+            char = pending
+            pending = ""
+        else:
+            char = stream.read(1)
+
+        if not char:
+            if buffer:
+                yield buffer
+            return
+
+        buffer += char
+
+        if char not in "\r\n":
+            continue
+
+        # Check whether the terminator contains a second character.
+        next_char = stream.read(1)
+
+        if next_char and next_char in "\r\n" and next_char != char:
+            buffer += next_char
+        elif next_char:
+            pending = next_char
+
+        yield buffer
+        buffer = ""
+
+
+def split_line_ending(line):
+    """Separate line content from its original terminator."""
+    if line.endswith("\r\n") or line.endswith("\n\r"):
+        return line[:-2], line[-2:]
+
+    if line.endswith("\r") or line.endswith("\n"):
+        return line[:-1], line[-1:]
+
+    return line, ""
+
+
+def process(stream, max_length, replacement, skip, interval, line_ending):
+    """
+    Process input lines using line-count and optional time constraints.
+
+    A line is printed when either:
+      - The line counter reaches 'skip'.
+      - The elapsed time reaches 'interval'.
+
+    After a print, both counters are reset.
+    The time constraint is disabled when interval is None.
+    """
+    line_count = 0
+    last_print_time = time.monotonic()
+
+    for raw_line in iter_lines(stream):
+        now = time.monotonic()
+        line_count += 1
+
+        # Check whether the line-count constraint has been reached.
+        line_due = line_count >= skip
+
+        # Check whether the time constraint has expired.
+        time_due = (
+            interval is not None
+            and now - last_print_time >= interval
+        )
+
+        # Skip the line if neither constraint has been satisfied.
+        if not line_due and not time_due:
+            continue
+
+        # Separate the content from its original terminator.
+        content, original_ending = split_line_ending(raw_line)
+
+        # Truncate only when the content exceeds the maximum length.
+        content = truncate(content, max_length, replacement)
+
+        # Select the output terminator.
+        if line_ending is None:
+            ending = original_ending
+        else:
+            ending = line_ending
+
+        # Write the selected line.
+        sys.stdout.write(content + ending)
+        sys.stdout.flush()
+
+        # Reset both counters after every printed line.
+        line_count = 0
+        last_print_time = time.monotonic()
+
+
+def build_parser():
+    """Create the command-line argument parser."""
+    parser = argparse.ArgumentParser(
+        description=(
+            "Limit line length by replacing the middle portion "
+            "of long lines. Optionally filter output by line count "
+            "and elapsed time."
+        ),
+        epilog=(
+            "Examples:\n"
+            "  %(prog)s input.txt\n"
+            "  %(prog)s -n 120 input.txt\n"
+            '  %(prog)s -n 60 -c "..." input.txt\n'
+            "  %(prog)s -s 5 input.txt\n"
+            "  %(prog)s -f 2.5 input.txt\n"
+            "  %(prog)s -s 10 -f 2.5 input.txt\n"
+            "  %(prog)s -t rn input.txt\n"
+            "  cat input.txt | %(prog)s -s 3 -f 1.5 -\n"
+        ),
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
+
+    parser.add_argument(
+        "-n",
+        type=parse_length,
+        default=DEFAULT_N,
+        metavar="N",
+        help="maximum line length, or 'term' (default: term)",
+    )
+
+    parser.add_argument(
+        "-c",
+        default=DEFAULT_C,
+        metavar="STRING",
+        help=f"middle replacement string (default: {DEFAULT_C})",
+    )
+
+    parser.add_argument(
+        "-s",
+        type=positive_int,
+        default=DEFAULT_S,
+        metavar="X",
+        help="print every Xth line (default: 1)",
+    )
+
+    parser.add_argument(
+        "-f",
+        type=positive_float,
+        default=DEFAULT_F,
+        metavar="SECONDS",
+        help="print a line when this many seconds have elapsed",
+    )
+
+    parser.add_argument(
+        "-t",
+        choices=("i", "rn", "nr", "r", "n"),
+        default=DEFAULT_T,
+        metavar="TYPE",
+        help=(
+            "line terminator: i=input, rn=CRLF, nr=LFCR, "
+            "r=CR, n=LF (default: i)"
+        ),
+    )
+
+    parser.add_argument(
+        "file",
+        nargs="?",
+        help="input file name, or '-' for standard input",
+    )
+
+    return parser
+
+
+def main():
+    # Display help when no arguments are provided.
+    if len(sys.argv) == 1:
+        build_parser().print_help()
+        return 0
+
+    parser = build_parser()
+    args = parser.parse_args()
+
+    if args.file is None:
+        parser.error("an input file or '-' is required")
+
+    # Determine the maximum line length.
+    if args.n == "term":
+        max_length = get_terminal_width()
+    else:
+        max_length = args.n
+
+    # Resolve the output line terminator.
+    line_ending = LINE_ENDINGS[args.t]
+
+    try:
+        if args.file == "-":
+            # Preserve input line terminators on standard input.
+            if hasattr(sys.stdin, "reconfigure"):
+                sys.stdin.reconfigure(newline="")
+
+            process(
+                sys.stdin,
+                max_length,
+                args.c,
+                args.s,
+                args.f,
+                line_ending,
+            )
+        else:
+            # Disable automatic newline conversion when reading files.
+            with open(
+                args.file,
+                "r",
+                encoding="utf-8",
+                newline="",
+            ) as stream:
+                process(
+                    stream,
+                    max_length,
+                    args.c,
+                    args.s,
+                    args.f,
+                    line_ending,
+                )
+
+    except KeyboardInterrupt:
+        print("\nInterrupted.", file=sys.stderr)
+        return 130
+
+    except (OSError, UnicodeError) as error:
+        print(f"{parser.prog}: error: {error}", file=sys.stderr)
+        return 1
+
+    return 0
+
+
+if __name__ == "__main__":
+    try:
+        sys.exit(main())
+    except BrokenPipeError:
+        sys.exit(0)
+
+
