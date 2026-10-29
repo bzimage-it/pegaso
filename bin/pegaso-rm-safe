@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+# pegaso-rm-safe: overwrite and delete files with shred. Does not handle directories.
+
+set -u
+
+usage() {
+    cat <<'EOF'
+pegaso-rm-safe - securely overwrite and delete files (using shred)
+
+USAGE
+    pegaso-rm-safe [-y] [--] FILE...
+    pegaso-rm-safe -h | --help
+
+DESCRIPTION
+    Overwrites the contents of each FILE with 3 passes of random data and
+    a final pass of zeros, then renames and deletes it
+    (equivalent to: shred -v -n 3 -z -u FILE).
+
+    Before proceeding it lists the files and asks you to type YES
+    (exactly, in uppercase). The confirmation is read from the terminal
+    (/dev/tty), so it also works inside find -exec and xargs.
+
+    All arguments are checked before starting: if even one of them does
+    not exist or is a directory, nothing is touched.
+
+    Symbolic links: only the link is removed; the file it points to is
+    left intact.
+
+    Directories: refused. To securely empty a directory, use find to
+    select the files (see EXAMPLES), then remove the empty structure with
+    rm -r.
+
+OPTIONS
+    -y, --yes    Do not ask for confirmation. Required when no terminal
+                 is available (cron, scripts, ssh without a tty).
+    -h, --help   Show this help.
+    --           End of options (for file names starting with "-").
+
+EXAMPLES
+    A single file, even with spaces or parentheses in its name:
+        pegaso-rm-safe "Document (1).md"
+
+    Several files at once:
+        pegaso-rm-safe a.txt b.txt "c d.pdf"
+
+    All files in a directory and its subdirectories
+    (one confirmation per batch of files passed by find):
+        find mydir/ -type f -exec pegaso-rm-safe {} +
+        rm -r mydir/
+
+    Same thing with xargs; -print0 and -0 are needed to correctly handle
+    names containing spaces, quotes or newlines:
+        find mydir/ -type f -print0 | xargs -0 pegaso-rm-safe
+        rm -r mydir/
+
+    One confirmation for each individual file:
+        find mydir/ -type f -exec pegaso-rm-safe {} \;
+
+    Only .pdf files older than 30 days in ~/Downloads:
+        find ~/Downloads -type f -name '*.pdf' -mtime +30 -exec pegaso-rm-safe {} +
+
+    Check first what would be selected (recommended):
+        find mydir/ -type f -print
+
+    From a list of files, one per line:
+        xargs -d '\n' pegaso-rm-safe < filelist.txt
+
+    Without confirmation, e.g. in a script (be careful!):
+        find /tmp/exports -type f -mtime +7 -exec pegaso-rm-safe -y {} +
+
+    Note: find -type f selects regular files only, so symbolic links
+    inside the directory are not followed; they are left in place and
+    removed by the final rm -r.
+
+LIMITATIONS
+    Overwriting is effective only if the filesystem rewrites the same
+    physical blocks. On SSDs and USB sticks (wear leveling), on Btrfs/ZFS
+    (copy-on-write) and when snapshots exist there is NO guarantee.
+    Copies in backups, caches, temporary files or swap are not touched.
+    Names of directories removed with rm -r may remain in the filesystem
+    metadata. If a file has hard links, its contents are destroyed for
+    the other names as well.
+
+EXIT STATUS
+    0  all files were destroyed
+    1  error, invalid file or operation cancelled
+    2  incorrect usage
+EOF
+}
+
+assume_yes=0
+while [ $# -gt 0 ]; do
+    case "$1" in
+        -h|--help) usage; exit 0 ;;
+        -y|--yes)  assume_yes=1; shift ;;
+        --)        shift; break ;;
+        -*)        echo "pegaso-rm-safe: unknown option: $1" >&2
+                   echo "Try 'pegaso-rm-safe --help' for more information." >&2
+                   exit 2 ;;
+        *)         break ;;
+    esac
+done
+
+if [ $# -eq 0 ]; then
+    echo "Usage: pegaso-rm-safe [-y] FILE..." >&2
+    echo "Try 'pegaso-rm-safe --help' for more information." >&2
+    exit 2
+fi
+
+# Validate every argument before touching anything
+for p in "$@"; do
+    if [ -L "$p" ]; then
+        continue
+    elif [ -d "$p" ]; then
+        echo "pegaso-rm-safe: is a directory, not touching it: $p" >&2
+        echo "For directories see the examples in 'pegaso-rm-safe --help'." >&2
+        exit 1
+    elif [ ! -e "$p" ]; then
+        echo "pegaso-rm-safe: no such file: $p" >&2
+        exit 1
+    fi
+done
+
+echo "The following will be destroyed:" >&2
+for p in "$@"; do
+    if [ -L "$p" ]; then
+        printf '  %s  (symlink: only the link is removed)\n' "$p" >&2
+    else
+        printf '  %s\n' "$p" >&2
+    fi
+done
+
+# Read confirmation from the terminal, not stdin (stdin may be an xargs pipe)
+if [ "$assume_yes" -eq 0 ]; then
+    if ! { : </dev/tty; } 2>/dev/null; then
+        echo "pegaso-rm-safe: no terminal available for confirmation (use -y)" >&2
+        exit 1
+    fi
+    if ! read -r -p "DATA WILL BE PERMANENTLY UNRECOVERABLE! Are you sure? [YES] " answer </dev/tty; then
+        echo "Cancelled." >&2
+        exit 1
+    fi
+    if [ "$answer" != "YES" ]; then
+        echo "Cancelled." >&2
+        exit 1
+    fi
+fi
+
+rc=0
+for p in "$@"; do
+    if [ -L "$p" ]; then
+        rm -- "$p" || rc=1
+    else
+        shred -v -n 3 -z -u -- "$p" || rc=1
+    fi
+done
+exit $rc
